@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 )
 
 func TestGetSourceSync(t *testing.T) {
@@ -80,7 +80,7 @@ func TestGetSourceSync(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 			queries := New(db)
 			require.NotNil(t, queries)
@@ -270,7 +270,7 @@ func TestInsertSourceSync(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 			queries := New(db)
 			require.NotNil(t, queries)
@@ -528,7 +528,7 @@ func TestUpdateSourceSync(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 			queries := New(db)
 			require.NotNil(t, queries)

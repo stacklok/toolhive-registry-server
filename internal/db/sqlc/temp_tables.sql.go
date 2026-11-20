@@ -27,7 +27,7 @@ func (q *Queries) CreateTempEntryVersionTable(ctx context.Context) error {
 const createTempIconTable = `-- name: CreateTempIconTable :exec
 
 CREATE TEMP TABLE temp_mcp_server_icon ON COMMIT DROP AS
-SELECT server_id, source_uri, mime_type, theme FROM mcp_server_icon
+SELECT server_id, source_uri, mime_type, theme, sizes, theme_present FROM mcp_server_icon
   WITH NO DATA
 `
 
@@ -40,7 +40,7 @@ func (q *Queries) CreateTempIconTable(ctx context.Context) error {
 const createTempPackageTable = `-- name: CreateTempPackageTable :exec
 
 CREATE TEMP TABLE temp_mcp_server_package ON COMMIT DROP AS
-SELECT server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version, runtime_hint, runtime_arguments, package_arguments, sha256_hash, transport, transport_url, env_vars, transport_headers FROM mcp_server_package
+SELECT server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version, runtime_hint, runtime_arguments, package_arguments, sha256_hash, transport, transport_url, env_vars, transport_headers, transport_variables FROM mcp_server_package
   WITH NO DATA
 `
 
@@ -70,7 +70,7 @@ func (q *Queries) CreateTempRegistryEntryTable(ctx context.Context) error {
 const createTempRemoteTable = `-- name: CreateTempRemoteTable :exec
 
 CREATE TEMP TABLE temp_mcp_server_remote ON COMMIT DROP AS
-SELECT server_id, transport, transport_url, transport_headers FROM mcp_server_remote
+SELECT server_id, transport, transport_url, transport_headers, transport_variables FROM mcp_server_remote
   WITH NO DATA
 `
 
@@ -83,7 +83,7 @@ func (q *Queries) CreateTempRemoteTable(ctx context.Context) error {
 const createTempServerTable = `-- name: CreateTempServerTable :exec
 
 CREATE TEMP TABLE temp_mcp_server ON COMMIT DROP AS
-SELECT website, upstream_meta, server_meta, repository_url, repository_id, repository_subfolder, repository_type, version_id FROM mcp_server
+SELECT website, upstream_meta, server_meta, repository_url, repository_id, repository_subfolder, repository_type, version_id, schema_url FROM mcp_server
   WITH NO DATA
 `
 
@@ -109,8 +109,8 @@ func (q *Queries) DeleteOrphanedIcons(ctx context.Context, serverIds []uuid.UUID
 const deleteOrphanedPackages = `-- name: DeleteOrphanedPackages :exec
 DELETE FROM mcp_server_package
 WHERE server_id = ANY($1::UUID[])
-  AND (server_id, pkg_identifier, transport) NOT IN (
-    SELECT server_id, pkg_identifier, transport FROM temp_mcp_server_package
+  AND (server_id, registry_type, pkg_identifier, transport) NOT IN (
+    SELECT server_id, registry_type, pkg_identifier, transport FROM temp_mcp_server_package
   )
 `
 
@@ -199,11 +199,11 @@ func (q *Queries) UpsertEntryVersionsFromTemp(ctx context.Context) ([]UpsertEntr
 }
 
 const upsertIconsFromTemp = `-- name: UpsertIconsFromTemp :exec
-INSERT INTO mcp_server_icon (server_id, source_uri, mime_type, theme)
-SELECT server_id, source_uri, mime_type, theme::icon_theme
+INSERT INTO mcp_server_icon (server_id, source_uri, mime_type, theme, sizes, theme_present)
+SELECT server_id, source_uri, mime_type, theme::icon_theme, sizes, theme_present
 FROM temp_mcp_server_icon
 ON CONFLICT (server_id, source_uri, mime_type, theme)
-DO NOTHING
+DO UPDATE SET sizes=EXCLUDED.sizes,theme_present=EXCLUDED.theme_present
 `
 
 func (q *Queries) UpsertIconsFromTemp(ctx context.Context) error {
@@ -215,12 +215,12 @@ const upsertPackagesFromTemp = `-- name: UpsertPackagesFromTemp :exec
 INSERT INTO mcp_server_package (
     server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
-    transport, transport_url, transport_headers
+    transport, transport_url, transport_headers, transport_variables
 )
 SELECT
     server_id, registry_type, pkg_registry_url, pkg_identifier, pkg_version,
     runtime_hint, runtime_arguments, package_arguments, env_vars, sha256_hash,
-    transport, transport_url, transport_headers
+    transport, transport_url, transport_headers, transport_variables
 FROM temp_mcp_server_package
 ON CONFLICT (server_id, registry_type, pkg_identifier, transport)
 DO UPDATE SET
@@ -232,7 +232,8 @@ DO UPDATE SET
     env_vars = EXCLUDED.env_vars,
     sha256_hash = EXCLUDED.sha256_hash,
     transport_url = EXCLUDED.transport_url,
-    transport_headers = EXCLUDED.transport_headers
+    transport_headers = EXCLUDED.transport_headers,
+    transport_variables = EXCLUDED.transport_variables
 `
 
 func (q *Queries) UpsertPackagesFromTemp(ctx context.Context) error {
@@ -292,11 +293,12 @@ func (q *Queries) UpsertRegistryEntriesFromTemp(ctx context.Context) ([]UpsertRe
 }
 
 const upsertRemotesFromTemp = `-- name: UpsertRemotesFromTemp :exec
-INSERT INTO mcp_server_remote (server_id, transport, transport_url, transport_headers)
-SELECT server_id, transport, transport_url, transport_headers
+INSERT INTO mcp_server_remote (server_id, transport, transport_url, transport_headers, transport_variables)
+SELECT server_id, transport, transport_url, transport_headers, transport_variables
 FROM temp_mcp_server_remote
 ON CONFLICT (server_id, transport, transport_url)
-DO UPDATE SET transport_headers = EXCLUDED.transport_headers
+DO UPDATE SET transport_headers = EXCLUDED.transport_headers,
+              transport_variables = EXCLUDED.transport_variables
 `
 
 func (q *Queries) UpsertRemotesFromTemp(ctx context.Context) error {
@@ -307,7 +309,7 @@ func (q *Queries) UpsertRemotesFromTemp(ctx context.Context) error {
 const upsertServersFromTemp = `-- name: UpsertServersFromTemp :exec
 INSERT INTO mcp_server (
     version_id, website, upstream_meta, server_meta,
-    repository_url, repository_id, repository_subfolder, repository_type
+    repository_url, repository_id, repository_subfolder, repository_type, schema_url
 )
 SELECT version_id,
        website,
@@ -316,7 +318,8 @@ SELECT version_id,
        repository_url,
        repository_id,
        repository_subfolder,
-       repository_type
+       repository_type,
+       schema_url
 FROM temp_mcp_server
   ON CONFLICT (version_id)
   DO UPDATE SET
@@ -326,7 +329,8 @@ FROM temp_mcp_server
     repository_url = EXCLUDED.repository_url,
     repository_id = EXCLUDED.repository_id,
     repository_subfolder = EXCLUDED.repository_subfolder,
-    repository_type = EXCLUDED.repository_type
+    repository_type = EXCLUDED.repository_type,
+    schema_url = EXCLUDED.schema_url
 `
 
 func (q *Queries) UpsertServersFromTemp(ctx context.Context) error {

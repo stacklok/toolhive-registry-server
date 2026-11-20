@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
@@ -19,7 +20,7 @@ func TestNewDatabaseFactory(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	// Migrate database for tests that need schema
@@ -111,7 +112,7 @@ func TestNewDatabaseFactory(t *testing.T) {
 // Not parallel: it sets the process-wide PGPASSFILE via t.Setenv.
 func TestNewDatabaseFactory_PgpassResolution(t *testing.T) {
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	require.NoError(t, database.MigrateUp(ctx, db))
@@ -153,7 +154,7 @@ func TestDatabaseFactory_CreateRegistryMetricsReader(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	err := database.MigrateUp(ctx, db)
@@ -164,7 +165,7 @@ func TestDatabaseFactory_CreateRegistryMetricsReader(t *testing.T) {
 			Host:     db.Config().Host,
 			Port:     int(db.Config().Port),
 			User:     db.Config().User,
-			Password: database.DBPass,
+			Password: dbtest.DBPass,
 			Database: db.Config().Database,
 			SSLMode:  "disable",
 		},
@@ -255,7 +256,7 @@ func TestDatabaseFactory_CreateStateService(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	// Migrate database
@@ -312,7 +313,7 @@ func TestDatabaseFactory_CreateSyncWriter(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	// Migrate database
@@ -369,7 +370,7 @@ func TestDatabaseFactory_CreateRegistryService(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	// Migrate database
@@ -426,7 +427,7 @@ func TestDatabaseFactory_Cleanup(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	// Migrate database

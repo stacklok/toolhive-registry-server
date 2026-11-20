@@ -15,7 +15,7 @@ Database migration tool
 
 ### Synopsis
 
-Database migration tool for managing schema versions. Use with 'up' or 'down' subcommands.
+Database migration tool for managing schema versions. Use with 'up', 'down' or 'force' subcommands.
 
 ```
 thv-registry-api migrate [flags]
@@ -40,5 +40,6 @@ thv-registry-api migrate [flags]
 
 * [thv-registry-api](thv-registry-api.md)	 - ToolHive Registry API server
 * [thv-registry-api migrate down](thv-registry-api_migrate_down.md)	 - Revert database migrations
+* [thv-registry-api migrate force](thv-registry-api_migrate_force.md)	 - Record a schema version without running migrations
 * [thv-registry-api migrate up](thv-registry-api_migrate_up.md)	 - Apply pending database migrations
 

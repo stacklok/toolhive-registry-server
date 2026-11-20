@@ -3,6 +3,9 @@ paths:
   - "internal/sync/**/*.go"
   - "internal/sources/**/*.go"
   - "internal/kubernetes/**/*.go"
+  - "pkg/registry/ingest/**/*.go"
+  - "pkg/registry/operator/**/*.go"
+  - "pkg/registry/reconcile/**/*.go"
 ---
 
 # Sync Pipeline
@@ -78,16 +81,37 @@ proceeds on malformed annotation JSON.
 other CRDs in the source continue. Missing annotation → entry has no claims (visible to
 all when anonymous, invisible when authz is active — that is the intended default-deny).
 
-## 4. Source Handlers Validate Before They Return
+## 4. Validation Is Split: Source Policy, Then Storage Safety
 
-`sources.RegistryHandler.FetchRegistry` returns a `*FetchResult` only when the payload
-parses against the upstream MCP registry schema and has at least one server. The sync
-writer trusts its input.
+Synced data keeps v1.5.4's per-source acceptance. Tightening it silently drops or
+fails catalogs that upgraded users relied on, so the strict publication rules
+(`persistence.ValidateSnapshot`: server name format, required description, no
+duplicate packages/remotes/icons, full wire schemas) apply to publish only.
 
-**Detect**: handler implementations that return a `FetchResult` with a nil or empty
-`Registry`; handler code that propagates raw upstream bytes without calling
-`ValidateUpstreamRegistryBytes`; sync writer code that re-validates what a handler already
-returned.
+**What must hold:**
+- Fetchers apply their source's policy and nothing stricter. File and Git:
+  `formats.DecodeUpstream` (toolhive-core wire schema, at least one server, name and
+  description required). API: decode the v0.1 pages only; no schema; zero servers is a
+  valid, catalog-emptying result. Kubernetes: no schema; every resource with the export,
+  URL and description annotations is exported; conversion failures are skipped with a
+  warning naming the resource.
+- Storage safety (`persistence.ValidateStorableSnapshot`) runs on the *filtered*
+  snapshot in `reconcile.Coordinator` and again in `CommitSnapshot`/`ReplaceSnapshot`.
+  It checks only what the database and read routes need: non-empty name/version within
+  the route limit, per-kind uniqueness, a `namespace/name` server shape, enum-valid
+  status, valid UTF-8 without NUL. The writer collapses duplicate packages, remotes and
+  icons to the first.
+- Content the database rejects (SQLSTATE class 22, 54000) is `ErrInvalid` for that
+  source, never `ErrUnavailable`: a data problem must not stop the sync runtime.
+- Every failure is logged once by the coordinator (`Sync failed`, with category and
+  cause); a validation cause names the record (kind, name, version). Returned errors and
+  stored status stay categories. Fetch causes travel via `ingest.WithCause`, with URL
+  userinfo, query strings and fragments removed; never log headers or credentials.
 
-**Instead**: validation is the handler's responsibility. The writer assumes valid input
-and focuses on transactional correctness.
+**Detect**: `ValidateSnapshot` called on a sync path; a schema check on API or
+Kubernetes data; storage checks on the unfiltered snapshot; a data-dependent database
+error classified as unavailable; a fetch error that drops its cause without
+`WithCause`, or one whose message includes it.
+
+**Instead**: put a new acceptance rule in the one source's fetcher, and a new storage
+requirement in `ValidateStorableSnapshot` with the database or route reason beside it.

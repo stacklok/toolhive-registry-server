@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 )
 
 const testPluginVersion = "1.0.0"
@@ -246,7 +246,7 @@ func TestInsertPluginVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -344,7 +344,7 @@ func TestInsertPluginVersionForSync(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -475,7 +475,7 @@ func TestUpsertPluginVersionForSync(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -751,7 +751,7 @@ func TestGetPluginVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1143,7 +1143,7 @@ func TestListPlugins(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1300,7 +1300,7 @@ func TestUpsertLatestPluginVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1421,7 +1421,7 @@ func TestDeleteOrphanedPlugins(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1511,7 +1511,7 @@ func TestInsertPluginGitPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1600,7 +1600,7 @@ func TestInsertPluginOciPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1727,7 +1727,7 @@ func TestListPluginGitPackages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1851,7 +1851,7 @@ func TestListPluginOciPackages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)

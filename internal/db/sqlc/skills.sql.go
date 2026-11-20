@@ -677,15 +677,17 @@ func (q *Queries) ListSkills(ctx context.Context, arg ListSkillsParams) ([]ListS
 const upsertLatestSkillVersion = `-- name: UpsertLatestSkillVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     $1,
+    'SKILL',
     $2,
     $3,
     $4
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = $3,
     latest_version_id = $4
@@ -722,7 +724,8 @@ INSERT INTO skill (
     repository,
     icons,
     metadata,
-    extension_meta
+    extension_meta,
+    provenance
 ) VALUES (
     $1,
     $2,
@@ -733,18 +736,21 @@ INSERT INTO skill (
     $7,
     $8,
     $9,
-    $10
+    $10,
+    $11
 )
 ON CONFLICT (version_id)
 DO UPDATE SET
-    status = COALESCE($3::skill_status, skill.status),
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
     license = $4,
     compatibility = $5,
     allowed_tools = $6,
     repository = $7,
     icons = $8,
     metadata = $9,
-    extension_meta = $10
+    extension_meta = $10,
+    provenance = $11
 RETURNING version_id
 `
 
@@ -759,6 +765,7 @@ type UpsertSkillVersionForSyncParams struct {
 	Icons         []byte          `json:"icons"`
 	Metadata      []byte          `json:"metadata"`
 	ExtensionMeta []byte          `json:"extension_meta"`
+	Provenance    []byte          `json:"provenance"`
 }
 
 func (q *Queries) UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkillVersionForSyncParams) (uuid.UUID, error) {
@@ -773,6 +780,7 @@ func (q *Queries) UpsertSkillVersionForSync(ctx context.Context, arg UpsertSkill
 		arg.Icons,
 		arg.Metadata,
 		arg.ExtensionMeta,
+		arg.Provenance,
 	)
 	var version_id uuid.UUID
 	err := row.Scan(&version_id)

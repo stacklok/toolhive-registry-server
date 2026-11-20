@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
@@ -153,7 +153,7 @@ func TestInsertSource(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 			queries := New(db)
 			require.NotNil(t, queries)
@@ -376,7 +376,7 @@ func TestListSources(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -442,7 +442,7 @@ func TestGetSource(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -564,7 +564,7 @@ func TestBulkUpsertSources(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -671,7 +671,7 @@ func TestDeleteConfigSourcesNotInList(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -753,7 +753,7 @@ func TestGetAPISourcesByNames(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -900,7 +900,7 @@ func TestGetRegistryByName(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 			queries := New(db)
 			require.NotNil(t, queries)
@@ -1020,7 +1020,7 @@ func TestUpsertRegistryUpdatesClaims(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 			queries := New(db)
 			require.NotNil(t, queries)

@@ -115,7 +115,7 @@ func confirmMigrationDown(numSteps uint, dbCfg *config.DatabaseConfig) bool {
 	if _, err := fmt.Scanln(&response); err != nil {
 		return false
 	}
-	return response == "yes"
+	return response == confirmYes
 }
 
 func executeMigrationDown(ctx context.Context, conn *pgx.Conn, connString string, numSteps uint) error {

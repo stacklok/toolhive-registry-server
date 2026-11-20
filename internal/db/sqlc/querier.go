@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -32,6 +33,35 @@ type Querier interface {
 	CreateTempRemoteTable(ctx context.Context) error
 	// Temp Server Table Operations
 	CreateTempServerTable(ctx context.Context) error
+	DefDeleteAPISource(ctx context.Context, dollar_1 uuid.UUID) error
+	DefDeleteAPIView(ctx context.Context, name string) error
+	DefDeleteConfigLinks(ctx context.Context) error
+	DefDeleteViewLinks(ctx context.Context, dollar_1 uuid.UUID) error
+	DefGetSource(ctx context.Context, name string) (DefGetSourceRow, error)
+	DefGetView(ctx context.Context, name string) (DefGetViewRow, error)
+	DefInsertAPIView(ctx context.Context, name string) (string, error)
+	DefInsertSource(ctx context.Context, arg DefInsertSourceParams) (string, error)
+	DefLink(ctx context.Context, arg DefLinkParams) (int64, error)
+	DefListSources(ctx context.Context) ([]DefListSourcesRow, error)
+	DefListViewNames(ctx context.Context) ([]string, error)
+	DefLockSource(ctx context.Context, name string) (DefLockSourceRow, error)
+	DefLockView(ctx context.Context, name string) (DefLockViewRow, error)
+	DefOtherManagedSource(ctx context.Context, name string) (string, error)
+	DefPruneSources(ctx context.Context, dollar_1 []string) error
+	DefPruneViews(ctx context.Context, dollar_1 []string) error
+	// An API registry that still links a CONFIG source the new config drops.
+	DefPrunedSourceUser(ctx context.Context, dollar_1 []string) (DefPrunedSourceUserRow, error)
+	DefSourceRaw(ctx context.Context, name string) (DefSourceRawRow, error)
+	DefSourceUsed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
+	DefTouchAPIView(ctx context.Context, dollar_1 uuid.UUID) error
+	DefUpdateSource(ctx context.Context, arg DefUpdateSourceParams) error
+	// A CONFIG source may change kind in place, as v1.5.4 allowed, except to or
+	// from managed. Entries stay until the next successful sync replaces them; the
+	// generation trigger makes the source due at once.
+	DefUpsertConfigSource(ctx context.Context, arg DefUpsertConfigSourceParams) (int64, error)
+	DefUpsertConfigView(ctx context.Context, name string) (string, error)
+	DefViewID(ctx context.Context, name string) (string, error)
+	DefViewSources(ctx context.Context, name string) ([]string, error)
 	// Delete CONFIG registry rows whose names are not in the provided list.
 	// Used during config sync to clean up registry/junction rows before deleting orphaned sources.
 	DeleteConfigRegistriesNotInList(ctx context.Context, keepNames []string) error
@@ -58,8 +88,21 @@ type Querier interface {
 	DeleteSkillsByRegistry(ctx context.Context, sourceID uuid.UUID) error
 	// Delete a source by name. Go callers guard against deleting wrong creation_type.
 	DeleteSource(ctx context.Context, name string) (int64, error)
+	// Lightweight admin projections deliberately omit claims, payloads and winner selection.
+	DiagnosticSourceID(ctx context.Context, name string) (uuid.UUID, error)
+	DiagnosticSourceVersions(ctx context.Context, sourceID uuid.UUID) ([]DiagnosticSourceVersionsRow, error)
+	DiagnosticViewVersions(ctx context.Context, registryID uuid.UUID) ([]DiagnosticViewVersionsRow, error)
 	DropTempEntryVersionTable(ctx context.Context) error
 	DropTempRegistryEntryTable(ctx context.Context) error
+	EntryDeleteEmptyNames(ctx context.Context, sourceID uuid.UUID) error
+	EntryDeleteVersion(ctx context.Context, arg EntryDeleteVersionParams) (int64, error)
+	EntryDropLatest(ctx context.Context, arg EntryDropLatestParams) error
+	EntryList(ctx context.Context, arg EntryListParams) ([]EntryListRow, error)
+	EntryManagedSource(ctx context.Context) (uuid.UUID, error)
+	EntrySource(ctx context.Context, sourceID uuid.UUID) (EntrySourceRow, error)
+	EntrySourceExists(ctx context.Context, sourceID uuid.UUID) (bool, error)
+	EntryVersionExists(ctx context.Context, arg EntryVersionExistsParams) (bool, error)
+	EntryVersionsForName(ctx context.Context, arg EntryVersionsForNameParams) ([]EntryVersionsForNameRow, error)
 	GetAPISourcesByNames(ctx context.Context, names []string) ([]GetAPISourcesByNamesRow, error)
 	GetLatestEntryVersion(ctx context.Context, arg GetLatestEntryVersionParams) (string, error)
 	GetManagedSources(ctx context.Context) ([]GetManagedSourcesRow, error)
@@ -95,7 +138,7 @@ type Querier interface {
 	GetSkillVersionBySourceName(ctx context.Context, arg GetSkillVersionBySourceNameParams) (GetSkillVersionBySourceNameRow, error)
 	GetSource(ctx context.Context, id uuid.UUID) (GetSourceRow, error)
 	GetSourceByName(ctx context.Context, name string) (GetSourceByNameRow, error)
-	GetSourceSync(ctx context.Context, id uuid.UUID) (RegistrySync, error)
+	GetSourceSync(ctx context.Context, id uuid.UUID) (GetSourceSyncRow, error)
 	GetSourceSyncByName(ctx context.Context, name string) (RegistrySync, error)
 	InitializeSourceSync(ctx context.Context, arg InitializeSourceSyncParams) error
 	InsertEntryVersion(ctx context.Context, arg InsertEntryVersionParams) (uuid.UUID, error)
@@ -120,6 +163,33 @@ type Querier interface {
 	// Insert a new source with full configuration. creation_type is passed as a parameter.
 	InsertSource(ctx context.Context, arg InsertSourceParams) (Source, error)
 	InsertSourceSync(ctx context.Context, arg InsertSourceSyncParams) (uuid.UUID, error)
+	// The previous status, start time and attempt count are kept in prev_* so an
+	// unchanged fetch can put them back; ended_at and error_msg are left alone, so
+	// the last finish time and message stay visible while the attempt runs. A row
+	// still IN_PROGRESS from an expired lease already holds the values to keep.
+	JobAcquire(ctx context.Context, arg JobAcquireParams) (JobAcquireRow, error)
+	JobClearSnapshotBaseline(ctx context.Context, dollar_1 uuid.UUID) error
+	JobFail(ctx context.Context, arg JobFailParams) (int64, error)
+	JobFence(ctx context.Context, arg JobFenceParams) (*uuid.UUID, error)
+	JobFinish(ctx context.Context, arg JobFinishParams) (int64, error)
+	// After a successful attempt, an unchanged fetch only moves checked_at (the due
+	// time): status, start and finish times, message and attempt count return to
+	// what they were before the acquire, as v1.5.4 left them. After a failed or
+	// unknown attempt it records a success as JobFinish does.
+	JobFinishUnchanged(ctx context.Context, arg JobFinishUnchangedParams) (int64, error)
+	JobInvalidateSnapshot(ctx context.Context, dollar_1 uuid.UUID) error
+	JobLockSource(ctx context.Context, name string) (JobLockSourceRow, error)
+	// A source is due when it was never attempted, its schedule has elapsed since
+	// the later of its last finished attempt and its last unchanged check, its last
+	// attempt failed and the shorter retry has elapsed, its definition changed, or
+	// an attempt was left IN_PROGRESS by a lease that is no longer live.
+	JobNext(ctx context.Context, arg JobNextParams) (string, error)
+	JobRenew(ctx context.Context, arg JobRenewParams) (pgtype.Timestamptz, error)
+	JobSnapshotAllowed(ctx context.Context, dollar_1 uuid.UUID) (bool, error)
+	// An attempt whose lease is no longer live reports the values it replaced, so
+	// a crashed or expired attempt neither stays IN_PROGRESS nor hides the last
+	// outcome.
+	JobStatus(ctx context.Context, name string) (JobStatusRow, error)
 	LinkRegistrySource(ctx context.Context, arg LinkRegistrySourceParams) error
 	ListAllSourceNames(ctx context.Context) ([]string, error)
 	ListEntriesByRegistry(ctx context.Context, registryID uuid.UUID) ([]ListEntriesByRegistryRow, error)
@@ -156,6 +226,13 @@ type Querier interface {
 	// Update all registry entries for a source to match the source's current claims.
 	// Used during initialization to fix drift when source claims change without data change.
 	PropagateSourceClaimsToEntries(ctx context.Context, arg PropagateSourceClaimsToEntriesParams) error
+	// The winners computed in Go are copied here, then applied in one statement.
+	// entry_type is text so COPY needs no enum codec on the connection.
+	RepairCreateTempLatest(ctx context.Context) error
+	RepairListVersions(ctx context.Context) ([]RepairListVersionsRow, error)
+	RepairPruneLatest(ctx context.Context) error
+	RepairSetLatest(ctx context.Context, arg RepairSetLatestParams) error
+	RepairUpsertLatestFromTemp(ctx context.Context) error
 	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
 	UpdateRegistryEntryClaims(ctx context.Context, arg UpdateRegistryEntryClaimsParams) (int64, error)
@@ -185,6 +262,18 @@ type Querier interface {
 	// Business logic in Go guards against cross-type overwrites.
 	UpsertSource(ctx context.Context, arg UpsertSourceParams) (uuid.UUID, error)
 	UpsertSourceSyncByName(ctx context.Context, arg UpsertSourceSyncByNameParams) error
+	// Walks entries of one kind in name order, then their versions, and keeps a
+	// version only when its entry wins the name: no entry with a version in a
+	// higher-priority source of the view (position, then source name) has the same
+	// kind and name. Winners are chosen before the version, latest, search and time
+	// filters, so a filter never promotes a lower-priority source. Names and
+	// versions sort and compare in the database's default collation, as v1.5.4's
+	// ORDER BY name, version did, so v1.5.4 cursors keep their position. Search is
+	// v1.5.4's LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and
+	// a backslash escapes the next character. The walk follows
+	// registry_entry_type_name_idx and stops at the page size; the redundant
+	// e.name >= cursor bound lets the index scan start at the cursor.
+	ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([]ViewEntryListRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

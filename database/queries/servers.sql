@@ -155,7 +155,8 @@ SELECT p.server_id,
 SELECT r.server_id,
        r.transport,
        r.transport_url,
-       r.transport_headers
+       r.transport_headers,
+       r.transport_variables
   FROM mcp_server_remote r
   JOIN mcp_server s ON r.server_id = s.version_id
  WHERE s.version_id = ANY(sqlc.slice(version_ids)::UUID[])
@@ -186,15 +187,17 @@ RETURNING version_id;
 -- name: UpsertLatestServerVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     sqlc.arg(source_id),
+    'MCP',
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(version_id)
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = sqlc.arg(version),
     latest_version_id = sqlc.arg(version_id)

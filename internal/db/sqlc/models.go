@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stacklok/toolhive-registry-server/internal/db/pgtypes"
 )
 
@@ -285,6 +286,11 @@ type LatestEntryVersion struct {
 	Name            string    `json:"name"`
 	Version         string    `json:"version"`
 	LatestVersionID uuid.UUID `json:"latest_version_id"`
+	EntryType       EntryType `json:"entry_type"`
+}
+
+type LatestEntryVersionRepair struct {
+	Pending bool `json:"pending"`
 }
 
 type McpServer struct {
@@ -296,36 +302,41 @@ type McpServer struct {
 	RepositorySubfolder *string   `json:"repository_subfolder"`
 	RepositoryType      *string   `json:"repository_type"`
 	VersionID           uuid.UUID `json:"version_id"`
+	SchemaUrl           *string   `json:"schema_url"`
 }
 
 type McpServerIcon struct {
-	ServerID  uuid.UUID `json:"server_id"`
-	SourceUri string    `json:"source_uri"`
-	MimeType  string    `json:"mime_type"`
-	Theme     IconTheme `json:"theme"`
+	ServerID     uuid.UUID   `json:"server_id"`
+	SourceUri    string      `json:"source_uri"`
+	MimeType     string      `json:"mime_type"`
+	Theme        IconTheme   `json:"theme"`
+	Sizes        []string    `json:"sizes"`
+	ThemePresent pgtype.Bool `json:"theme_present"`
 }
 
 type McpServerPackage struct {
-	ServerID         uuid.UUID `json:"server_id"`
-	RegistryType     string    `json:"registry_type"`
-	PkgRegistryUrl   string    `json:"pkg_registry_url"`
-	PkgIdentifier    string    `json:"pkg_identifier"`
-	PkgVersion       string    `json:"pkg_version"`
-	RuntimeHint      *string   `json:"runtime_hint"`
-	RuntimeArguments []byte    `json:"runtime_arguments"`
-	PackageArguments []byte    `json:"package_arguments"`
-	Sha256Hash       *string   `json:"sha256_hash"`
-	Transport        string    `json:"transport"`
-	TransportUrl     *string   `json:"transport_url"`
-	EnvVars          []byte    `json:"env_vars"`
-	TransportHeaders []byte    `json:"transport_headers"`
+	ServerID           uuid.UUID `json:"server_id"`
+	RegistryType       string    `json:"registry_type"`
+	PkgRegistryUrl     string    `json:"pkg_registry_url"`
+	PkgIdentifier      string    `json:"pkg_identifier"`
+	PkgVersion         string    `json:"pkg_version"`
+	RuntimeHint        *string   `json:"runtime_hint"`
+	RuntimeArguments   []byte    `json:"runtime_arguments"`
+	PackageArguments   []byte    `json:"package_arguments"`
+	Sha256Hash         *string   `json:"sha256_hash"`
+	Transport          string    `json:"transport"`
+	TransportUrl       *string   `json:"transport_url"`
+	EnvVars            []byte    `json:"env_vars"`
+	TransportHeaders   []byte    `json:"transport_headers"`
+	TransportVariables []byte    `json:"transport_variables"`
 }
 
 type McpServerRemote struct {
-	ServerID         uuid.UUID `json:"server_id"`
-	Transport        string    `json:"transport"`
-	TransportUrl     string    `json:"transport_url"`
-	TransportHeaders []byte    `json:"transport_headers"`
+	ServerID           uuid.UUID `json:"server_id"`
+	Transport          string    `json:"transport"`
+	TransportUrl       string    `json:"transport_url"`
+	TransportHeaders   []byte    `json:"transport_headers"`
+	TransportVariables []byte    `json:"transport_variables"`
 }
 
 type Plugin struct {
@@ -383,18 +394,27 @@ type RegistrySource struct {
 }
 
 type RegistrySync struct {
-	ID                    uuid.UUID  `json:"id"`
-	SourceID              *uuid.UUID `json:"source_id"`
-	SyncStatus            SyncStatus `json:"sync_status"`
-	ErrorMsg              *string    `json:"error_msg"`
-	StartedAt             *time.Time `json:"started_at"`
-	EndedAt               *time.Time `json:"ended_at"`
-	AttemptCount          int64      `json:"attempt_count"`
-	LastSyncHash          *string    `json:"last_sync_hash"`
-	LastAppliedFilterHash *string    `json:"last_applied_filter_hash"`
-	ServerCount           int64      `json:"server_count"`
-	SkillCount            int64      `json:"skill_count"`
-	PluginCount           int64      `json:"plugin_count"`
+	ID                    uuid.UUID          `json:"id"`
+	SourceID              *uuid.UUID         `json:"source_id"`
+	SyncStatus            SyncStatus         `json:"sync_status"`
+	ErrorMsg              *string            `json:"error_msg"`
+	StartedAt             *time.Time         `json:"started_at"`
+	EndedAt               *time.Time         `json:"ended_at"`
+	AttemptCount          int64              `json:"attempt_count"`
+	LastSyncHash          *string            `json:"last_sync_hash"`
+	LastAppliedFilterHash *string            `json:"last_applied_filter_hash"`
+	ServerCount           int64              `json:"server_count"`
+	SkillCount            int64              `json:"skill_count"`
+	PluginCount           int64              `json:"plugin_count"`
+	LeaseID               *uuid.UUID         `json:"lease_id"`
+	LeaseExpiresAt        pgtype.Timestamptz `json:"lease_expires_at"`
+	LeaseGeneration       pgtype.Int8        `json:"lease_generation"`
+	ObservedGeneration    pgtype.Int8        `json:"observed_generation"`
+	AppliedGeneration     pgtype.Int8        `json:"applied_generation"`
+	CheckedAt             pgtype.Timestamptz `json:"checked_at"`
+	PrevSyncStatus        NullSyncStatus     `json:"prev_sync_status"`
+	PrevStartedAt         pgtype.Timestamptz `json:"prev_started_at"`
+	PrevAttemptCount      pgtype.Int8        `json:"prev_attempt_count"`
 }
 
 type Skill struct {
@@ -408,6 +428,7 @@ type Skill struct {
 	Icons         []byte      `json:"icons"`
 	Metadata      []byte      `json:"metadata"`
 	ExtensionMeta []byte      `json:"extension_meta"`
+	Provenance    []byte      `json:"provenance"`
 }
 
 type SkillGitPackage struct {
@@ -428,17 +449,18 @@ type SkillOciPackage struct {
 }
 
 type Source struct {
-	ID           uuid.UUID        `json:"id"`
-	Name         string           `json:"name"`
-	CreatedAt    *time.Time       `json:"created_at"`
-	UpdatedAt    *time.Time       `json:"updated_at"`
-	CreationType CreationType     `json:"creation_type"`
-	SyncSchedule pgtypes.Interval `json:"sync_schedule"`
-	SourceType   string           `json:"source_type"`
-	SourceConfig []byte           `json:"source_config"`
-	FilterConfig []byte           `json:"filter_config"`
-	Syncable     bool             `json:"syncable"`
-	Claims       []byte           `json:"claims"`
+	ID                   uuid.UUID        `json:"id"`
+	Name                 string           `json:"name"`
+	CreatedAt            *time.Time       `json:"created_at"`
+	UpdatedAt            *time.Time       `json:"updated_at"`
+	CreationType         CreationType     `json:"creation_type"`
+	SyncSchedule         pgtypes.Interval `json:"sync_schedule"`
+	SourceType           string           `json:"source_type"`
+	SourceConfig         []byte           `json:"source_config"`
+	FilterConfig         []byte           `json:"filter_config"`
+	Syncable             bool             `json:"syncable"`
+	Claims               []byte           `json:"claims"`
+	DefinitionGeneration int64            `json:"definition_generation"`
 }
 
 type TempEntryVersion struct {
@@ -450,6 +472,14 @@ type TempEntryVersion struct {
 	Description *string    `json:"description"`
 	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
+}
+
+type TempLatestRepair struct {
+	SourceID  uuid.UUID `json:"source_id"`
+	EntryType string    `json:"entry_type"`
+	Name      string    `json:"name"`
+	Version   string    `json:"version"`
+	VersionID uuid.UUID `json:"version_id"`
 }
 
 type TempMcpServer struct {

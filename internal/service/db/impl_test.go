@@ -12,7 +12,7 @@ import (
 	"github.com/modelcontextprotocol/registry/pkg/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -23,7 +23,7 @@ func setupTestService(t *testing.T) (*dbService, func()) {
 	t.Helper()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDB(t)
+	db, cleanupFunc := dbtest.SetupTestDB(t)
 	t.Cleanup(cleanupFunc)
 
 	// Get connection string from the db connection
@@ -1000,7 +1000,7 @@ func TestWithConnectionPool(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T) *pgxpool.Pool {
 				ctx := context.Background()
-				db, cleanupFunc := database.SetupTestDB(t)
+				db, cleanupFunc := dbtest.SetupTestDB(t)
 				t.Cleanup(cleanupFunc)
 
 				connStr := db.Config().ConnString()
@@ -1056,7 +1056,7 @@ func TestNew(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T) []Option {
 				ctx := context.Background()
-				db, cleanupFunc := database.SetupTestDB(t)
+				db, cleanupFunc := dbtest.SetupTestDB(t)
 				t.Cleanup(cleanupFunc)
 
 				connStr := db.Config().ConnString()
@@ -1077,7 +1077,7 @@ func TestNew(t *testing.T) {
 			//nolint:thelper // We want to see these lines in the test output
 			setupFunc: func(t *testing.T) []Option {
 				ctx := context.Background()
-				db, cleanupFunc := database.SetupTestDB(t)
+				db, cleanupFunc := dbtest.SetupTestDB(t)
 				t.Cleanup(cleanupFunc)
 
 				connStr := db.Config().ConnString()
@@ -2070,7 +2070,7 @@ func TestListSources(t *testing.T) {
 				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "list-src-beta",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2159,7 +2159,7 @@ func TestListRegistries(t *testing.T) {
 				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "list-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2274,7 +2274,7 @@ func TestGetRegistryByName(t *testing.T) {
 				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "get-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2379,7 +2379,7 @@ func TestCreateRegistry(t *testing.T) {
 				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "create-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2583,7 +2583,7 @@ func TestUpdateRegistry(t *testing.T) {
 				_, err = queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "update-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,
@@ -2704,7 +2704,7 @@ func TestUpdateRegistry(t *testing.T) {
 				srcB, err := queries.InsertSource(ctx, sqlc.InsertSourceParams{
 					Name:         "reorder-reg-source-b",
 					CreationType: sqlc.CreationTypeAPI,
-					SourceType:   "managed",
+					SourceType:   "kubernetes",
 
 					SourceConfig: []byte(`{}`),
 					Syncable:     false,

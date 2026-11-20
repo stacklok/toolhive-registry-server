@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/telemetry"
 )
 
@@ -16,7 +17,7 @@ func TestRegistryMetricsReader_RegistryMetricCounts(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDB(t)
+	db, cleanupFunc := dbtest.SetupTestDB(t)
 	t.Cleanup(cleanupFunc)
 
 	require.NoError(t, database.MigrateUp(ctx, db))

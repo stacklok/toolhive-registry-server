@@ -187,7 +187,7 @@ api:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `endpoint` | string | Yes | Base API URL (without path); the server appends MCP Registry API v0.1 paths automatically |
-| `timeout` | string | No | Per-request HTTP timeout as a Go duration (e.g. `30s`, `1m`). Defaults to `10s`; must be greater than `0` and at most `5m`. Raise this for public or occasionally-slow upstreams where individual requests can take longer. |
+| `timeout` | string | No | Per-request HTTP timeout as a Go duration (e.g. `30s`, `1m`). Defaults to `10s`; must be greater than `0` and at most `5m`. Raise this for public or occasionally-slow upstreams where individual requests can take longer. The timeout applies to each request (the probe and every page) separately; a paginated sync as a whole has no time limit. |
 
 **Supports:**
 - Automatic background synchronization

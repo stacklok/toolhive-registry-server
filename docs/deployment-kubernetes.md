@@ -415,8 +415,10 @@ spec:
 ```
 
 > **Note:** `maxUnavailable: 0` keeps old pods serving until a new pod is ready, which
-> is what makes upgrades zero-downtime. One migration is incompatible with that — see
-> [Upgrading across migration 000023](#upgrading-across-migration-000023).
+> is what makes upgrades zero-downtime. Two migrations need care with that — see
+> [Upgrading across migration 000023](#upgrading-across-migration-000023) (unsafe overlap)
+> and [Upgrading across migration 000025](#upgrading-across-migration-000025) (failed
+> writes during the overlap).
 
 ### Upgrading across migration 000023
 
@@ -460,6 +462,32 @@ Two things to know afterwards:
   curl -X DELETE "$REGISTRY/v1/entries/server/$(printf %s "$NAME" | jq -sRr @uri)/versions/$VERSION"
   curl -X POST "$REGISTRY/v1/entries" -H 'Content-Type: application/json' --data @server.json
   ```
+
+### Upgrading across migration 000025
+
+Upgrading from v1.5.x applies migration `000025`, which changes the primary key of
+`latest_entry_version` from `(source_id, name)` to `(source_id, entry_type, name)` so a
+skill and a plugin may share a name. v1.5.x binaries record an entry's latest version with
+`ON CONFLICT (source_id, name)`, which no longer matches any constraint.
+
+**A rolling upgrade is safe but fails some writes until it finishes.** From the moment the
+first new replica has migrated the database, old replicas that are still running:
+
+- serve consumer and admin reads normally;
+- fail every write that records a latest version, with `there is no unique or exclusion
+  constraint matching the ON CONFLICT specification` in their log:
+  - `POST /v1/entries` returns 500 `failed to publish entry`;
+  - deleting an entry's latest version fails;
+  - their Kubernetes, git, API and file syncs fail.
+
+Each failed write rolls back as a whole, so nothing is lost or left half-written, and new
+replicas keep syncing every source. Clients that publish during the rollout should retry a
+500.
+
+For an upgrade with no failed writes, scale to zero first (as for
+[migration 000023](#upgrading-across-migration-000023)) or use
+`strategy: {type: Recreate}`. Reads are then unavailable until the first new replica is
+ready.
 
 ### Pod Disruption Budget
 

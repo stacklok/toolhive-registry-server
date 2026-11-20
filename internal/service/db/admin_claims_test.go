@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	database "github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/auth"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -26,7 +26,7 @@ func setupTestServiceWithCodecs(t *testing.T) (*dbService, func()) {
 	t.Helper()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDB(t)
+	db, cleanupFunc := dbtest.SetupTestDB(t)
 
 	connStr := db.Config().ConnString()
 

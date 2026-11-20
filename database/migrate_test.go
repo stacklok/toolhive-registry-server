@@ -1,4 +1,4 @@
-package database
+package database_test
 
 import (
 	"context"
@@ -8,24 +8,27 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 )
 
 func TestMigrations(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	connString := db.Config().ConnString()
 
 	// Create migrate instance
-	m, err := GetMigrate(connString)
+	m, err := database.GetMigrate(connString)
 	assert.NoError(t, err)
 	defer m.Close()
 
 	// Count the number of logical migrations
-	fnames, err := fs.Glob(migrationsFS, "migrations/*.up.sql")
+	fnames, err := fs.Glob(database.MigrationsFS, "migrations/*.up.sql")
 	require.NoError(t, err)
 
 	// Test each migration individually: apply, rollback, re-apply
@@ -56,7 +59,7 @@ func TestGetMigrate(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	db, cleanupFunc := SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
 	tests := []struct {
@@ -94,7 +97,7 @@ func TestGetMigrate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			m, err := GetMigrate(tt.connString)
+			m, err := database.GetMigrate(tt.connString)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -125,7 +128,7 @@ func TestMigrateUp(t *testing.T) {
 			name: "fresh database - apply all migrations",
 			setup: func(t *testing.T) *pgx.Conn {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
 				return db
 			},
@@ -135,10 +138,10 @@ func TestMigrateUp(t *testing.T) {
 			name: "already migrated database - no change",
 			setup: func(t *testing.T) *pgx.Conn {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
 				// Run migrations once
-				err := MigrateUp(ctx, db)
+				err := database.MigrateUp(ctx, db)
 				require.NoError(t, err)
 				return db
 			},
@@ -148,10 +151,10 @@ func TestMigrateUp(t *testing.T) {
 			name: "partially migrated database - apply remaining",
 			setup: func(t *testing.T) *pgx.Conn {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
 				// Apply first migration only
-				m, err := GetMigrate(db.Config().ConnString())
+				m, err := database.GetMigrate(db.Config().ConnString())
 				require.NoError(t, err)
 				err = m.Steps(1)
 				require.NoError(t, err)
@@ -167,7 +170,7 @@ func TestMigrateUp(t *testing.T) {
 			t.Parallel()
 
 			db := tt.setup(t)
-			err := MigrateUp(ctx, db)
+			err := database.MigrateUp(ctx, db)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -198,9 +201,9 @@ func TestMigrateDown(t *testing.T) {
 			name: "rollback one step from fully migrated",
 			setup: func(t *testing.T) (*pgx.Conn, int) {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := database.MigrateUp(ctx, db)
 				require.NoError(t, err)
 				return db, 1
 			},
@@ -211,12 +214,12 @@ func TestMigrateDown(t *testing.T) {
 			name: "rollback multiple steps",
 			setup: func(t *testing.T) (*pgx.Conn, int) {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := database.MigrateUp(ctx, db)
 				require.NoError(t, err)
 				// Count available migrations
-				fnames, err := fs.Glob(migrationsFS, "migrations/*.up.sql")
+				fnames, err := fs.Glob(database.MigrationsFS, "migrations/*.up.sql")
 				require.NoError(t, err)
 				return db, len(fnames)
 			},
@@ -227,9 +230,9 @@ func TestMigrateDown(t *testing.T) {
 			name: "rollback zero steps - no-op",
 			setup: func(t *testing.T) (*pgx.Conn, int) {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := database.MigrateUp(ctx, db)
 				require.NoError(t, err)
 				return db, 0
 			},
@@ -240,7 +243,7 @@ func TestMigrateDown(t *testing.T) {
 			name: "rollback on empty database - returns error",
 			setup: func(t *testing.T) (*pgx.Conn, int) {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
 				return db, 1
 			},
@@ -252,12 +255,12 @@ func TestMigrateDown(t *testing.T) {
 			name: "rollback all migrations",
 			setup: func(t *testing.T) (*pgx.Conn, int) {
 				t.Helper()
-				db, cleanup := SetupTestDBContainer(t, ctx)
+				db, cleanup := dbtest.SetupTestDBContainer(t, ctx)
 				t.Cleanup(cleanup)
-				err := MigrateUp(ctx, db)
+				err := database.MigrateUp(ctx, db)
 				require.NoError(t, err)
 				// Count available migrations
-				fnames, err := fs.Glob(migrationsFS, "migrations/*.up.sql")
+				fnames, err := fs.Glob(database.MigrationsFS, "migrations/*.up.sql")
 				require.NoError(t, err)
 				return db, len(fnames)
 			},
@@ -276,7 +279,7 @@ func TestMigrateDown(t *testing.T) {
 				steps = setupSteps
 			}
 
-			err := MigrateDown(ctx, db, steps)
+			err := database.MigrateDown(ctx, db, steps)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -314,7 +317,7 @@ func TestGetPrimeTemplate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			content, err := GetPrimeTemplate()
+			content, err := database.GetPrimeTemplate()
 
 			if tt.wantErr {
 				require.Error(t, err)

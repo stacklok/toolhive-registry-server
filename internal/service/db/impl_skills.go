@@ -560,8 +560,9 @@ func (s *dbService) executePublishSkillTransaction(
 	// Compare with current latest before upserting — avoid regressing the pointer
 	shouldUpdateLatest := true
 	currentLatest, err := querier.GetLatestEntryVersion(ctx, sqlc.GetLatestEntryVersionParams{
-		Name:     skill.Name,
-		SourceID: managedSource.ID,
+		Name:      skill.Name,
+		EntryType: sqlc.EntryTypeSKILL,
+		SourceID:  managedSource.ID,
 	})
 	if err == nil {
 		shouldUpdateLatest = versions.IsNewerVersion(skill.Version, currentLatest)
@@ -722,7 +723,7 @@ func (s *dbService) executeDeleteSkillTransaction(
 		return err
 	}
 
-	if err := rePointLatestVersionIfNeeded(ctx, querier, registry.ID, options.Name, entryID,
+	if err := rePointLatestVersionIfNeeded(ctx, querier, registry.ID, sqlc.EntryTypeSKILL, options.Name, entryID,
 		func(
 			ctx context.Context,
 			querier *sqlc.Queries,

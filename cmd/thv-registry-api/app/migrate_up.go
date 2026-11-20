@@ -64,7 +64,7 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 		if _, err := fmt.Scanln(&response); err != nil {
 			return fmt.Errorf("failed to read user input: %w", err)
 		}
-		if response != "yes" && response != "y" {
+		if response != confirmYes && response != "y" {
 			slog.Info("Migration cancelled by user")
 			return nil
 		}
@@ -83,8 +83,8 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 
 	// Run migrations
 	slog.Info("Applying database migrations")
-	if err := database.MigrateUp(ctx, conn); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	if err := migrateUpAndRepair(ctx, conn); err != nil {
+		return err
 	}
 
 	// Get current version
@@ -98,4 +98,13 @@ func runMigrateUp(cmd *cobra.Command, _ []string) error {
 	}
 
 	return nil
+}
+
+// migrateUpAndRepair applies pending migrations, then any latest-pointer
+// rebuild they scheduled.
+func migrateUpAndRepair(ctx context.Context, conn *pgx.Conn) error {
+	if err := database.MigrateUp(ctx, conn); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	return repairLatestPointers(ctx, conn)
 }
