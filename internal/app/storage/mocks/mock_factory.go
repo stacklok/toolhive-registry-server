@@ -17,6 +17,7 @@ import (
 	service "github.com/stacklok/toolhive-registry-server/internal/service"
 	database "github.com/stacklok/toolhive-registry-server/internal/service/db"
 	persistence "github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
+	postgres "github.com/stacklok/toolhive-registry-server/pkg/registry/postgres"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,18 +58,18 @@ func (mr *MockFactoryMockRecorder) Cleanup() *gomock.Call {
 }
 
 // CreateCatalog mocks base method.
-func (m *MockFactory) CreateCatalog(ctx context.Context, overrides database.EntryClaimsProvider) (*storage.Catalog, error) {
+func (m *MockFactory) CreateCatalog(ctx context.Context, hook postgres.EntryWriteHook) (*storage.Catalog, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateCatalog", ctx, overrides)
+	ret := m.ctrl.Call(m, "CreateCatalog", ctx, hook)
 	ret0, _ := ret[0].(*storage.Catalog)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateCatalog indicates an expected call of CreateCatalog.
-func (mr *MockFactoryMockRecorder) CreateCatalog(ctx, overrides any) *gomock.Call {
+func (mr *MockFactoryMockRecorder) CreateCatalog(ctx, hook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCatalog", reflect.TypeOf((*MockFactory)(nil).CreateCatalog), ctx, overrides)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateCatalog", reflect.TypeOf((*MockFactory)(nil).CreateCatalog), ctx, hook)
 }
 
 // CreateRegistryService mocks base method.

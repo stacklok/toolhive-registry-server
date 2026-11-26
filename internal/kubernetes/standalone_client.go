@@ -19,10 +19,14 @@ import (
 // client on first preflight. It owns no manager or background work.
 type StandaloneFactory struct {
 	API client.WithWatch
-	// Claims receives the authz-claims annotations the workers observe. The
-	// server always sets it; nil disables annotation claims.
+	// Claims receives the authz-claims annotations the workers observe; set in
+	// claims mode (with or without auth.authz), nil in Cedar mode.
 	Claims *AnnotationClaims
-	mu     sync.Mutex
+	// IgnoreClaimAnnotations leaves authz-claims annotations unread, for
+	// Cedar mode: claims carry no meaning there, so a malformed annotation must
+	// not keep a resource out of the registry. It excludes Claims.
+	IgnoreClaimAnnotations bool
+	mu                     sync.Mutex
 }
 
 func (f *StandaloneFactory) api() (client.WithWatch, error) {
@@ -44,7 +48,7 @@ func (f *StandaloneFactory) Preflight(ctx context.Context, d persistence.SourceD
 	if err != nil {
 		return err
 	}
-	return PreflightStandaloneOperator(ctx, api, d)
+	return preflightStandaloneOperator(ctx, api, d, f.IgnoreClaimAnnotations)
 }
 
 // Worker constructs an unstarted leased runner borrowing the authoritative client.
@@ -55,7 +59,7 @@ func (f *StandaloneFactory) Worker(
 	if err != nil {
 		return nil, err
 	}
-	return NewStandaloneOperator(api, jobs, d, opts, f.Claims)
+	return newStandaloneOperator(api, jobs, d, opts, f.Claims, f.IgnoreClaimAnnotations)
 }
 
 // NewStandaloneClient creates an authoritative direct list/watch client without

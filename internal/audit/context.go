@@ -9,6 +9,9 @@ import (
 
 // RouteInfo carries pre-resolved audit metadata for a single route.
 type RouteInfo struct {
+	// MutationCommitted records a mutation the library's admin router reports
+	// as persisted, even when the response then fails.
+	MutationCommitted bool
 	// EventType is the resolved event type for non-upsert routes.
 	EventType string
 	// OnCreate / OnUpdate are set for PUT upsert routes.

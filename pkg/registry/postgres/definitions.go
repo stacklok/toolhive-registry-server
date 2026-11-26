@@ -394,7 +394,7 @@ func (d *Definitions) write(ctx context.Context, fn func(pgx.Tx) error) error {
 
 // RequiredSchemaVersion is the database migration version this adapter writes
 // against. Hosts apply the registry migrations before constructing writers.
-const RequiredSchemaVersion = 28
+const RequiredSchemaVersion = 29
 
 func requireSchema(ctx context.Context, tx pgx.Tx) error {
 	// Held for the whole transaction; never cache compatibility across writes.

@@ -13,6 +13,7 @@ Complete configuration reference for the ToolHive Registry API server.
 - [Settings Normalized for v1.5.4 Compatibility](#settings-normalized-for-v154-compatibility)
 - [Conflicts with API-Created Sources and Registries](#conflicts-with-api-created-sources-and-registries)
 - [Authentication](#authentication)
+- [Authorization](#authorization)
 - [Database](#database)
 - [Environment Variables](#environment-variables)
 - [Examples](#examples)
@@ -465,6 +466,25 @@ auth:
         clientId: client-id      # Optional
         clientSecretFile: /secrets/secret  # Optional
         caCertPath: /certs/ca.crt  # Optional
+```
+
+## Authorization
+
+The server authorizes requests in one of two modes, fixed for the life of a
+deployment. Without an `authorization` block it runs in **claims mode** (roles
+under `auth.authz` plus claims on sources, registries and entries). An
+`authorization` block selects **Cedar mode**, where a Cedar policy admits each
+request. See the [Cedar authorization guide](authorization-cedar.md).
+
+```yaml
+authorization:                   # Presence selects Cedar mode
+  policyFile: /etc/registry/policies.cedar   # Optional; default permits every authenticated caller
+  allowAnonymousCatalog: false
+  identityMappings:
+    - issuer: https://idp.example.com
+      groups: {claim: groups, format: string-array}
+admin:
+  enabled: true                  # Cedar mode only; serves /v1 (requires oauth)
 ```
 
 ## Database

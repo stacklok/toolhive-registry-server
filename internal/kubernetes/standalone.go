@@ -199,13 +199,21 @@ func (j *syncedJobs) CommitSnapshot(
 
 // NewStandaloneOperator constructs the leased operator worker for one
 // Kubernetes source; it restarts the runner when a watch ends. The
-// authoritative client remains caller-owned. claims may be nil, which disables
-// annotation claims.
+// authoritative client remains caller-owned. claims is nil in Cedar mode.
 func NewStandaloneOperator(
 	api client.WithWatch, jobs persistence.Jobs, definition persistence.SourceDefinition,
 	options reconcile.Options, claims *AnnotationClaims,
 ) (*OperatorWorker, error) {
-	if api == nil {
+	return newStandaloneOperator(api, jobs, definition, options, claims, false)
+}
+
+// newStandaloneOperator is NewStandaloneOperator with ignoreClaims, which
+// leaves authz-claims annotations unread (Cedar mode). It excludes claims.
+func newStandaloneOperator(
+	api client.WithWatch, jobs persistence.Jobs, definition persistence.SourceDefinition,
+	options reconcile.Options, claims *AnnotationClaims, ignoreClaims bool,
+) (*OperatorWorker, error) {
+	if api == nil || (ignoreClaims && claims != nil) {
 		return nil, persistence.ErrInvalid
 	}
 	if err := ValidateNamespaces(definition); err != nil {
@@ -218,8 +226,8 @@ func NewStandaloneOperator(
 	}
 	worker := &OperatorWorker{source: definition.Name}
 	jobs = &syncedJobs{Jobs: jobs, synced: &worker.synced}
-	runner, err := operator.NewRunner(&standaloneExportClient{WithWatch: api, source: definition.Name, claims: claims},
-		jobs, definition, options)
+	exportClient := &standaloneExportClient{WithWatch: api, source: definition.Name, claims: claims, ignoreClaims: ignoreClaims}
+	runner, err := operator.NewRunner(exportClient, jobs, definition, options)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +275,12 @@ func (e *PreflightError) Reason() string { return string(apierrors.ReasonForErro
 // It does not watch, lease or write. An invalid definition is
 // persistence.ErrInvalid; a failed list is a *PreflightError.
 func PreflightStandaloneOperator(ctx context.Context, api client.WithWatch, definition persistence.SourceDefinition) error {
+	return preflightStandaloneOperator(ctx, api, definition, false)
+}
+
+func preflightStandaloneOperator(
+	ctx context.Context, api client.WithWatch, definition persistence.SourceDefinition, ignoreClaims bool,
+) error {
 	if api == nil {
 		return persistence.ErrInvalid
 	}
@@ -276,7 +290,8 @@ func PreflightStandaloneOperator(ctx context.Context, api client.WithWatch, defi
 	if definition.ID == "" {
 		definition.ID = "preflight"
 	}
-	if _, err := operator.NewFetcher(api, definition); err != nil {
+	checked := &standaloneExportClient{WithWatch: api, ignoreClaims: ignoreClaims}
+	if _, err := operator.NewFetcher(checked, definition); err != nil {
 		return fmt.Errorf("kubernetes source %q: %w", definition.Name, err)
 	}
 	namespaces := definition.Kubernetes.Namespaces
@@ -330,6 +345,9 @@ type standaloneExportClient struct {
 	client.WithWatch
 	source string
 	claims *AnnotationClaims
+	// ignoreClaims leaves authz-claims annotations unread, so a malformed one
+	// never drops a resource. Cedar mode sets it: claims carry no meaning there.
+	ignoreClaims bool
 }
 
 // A failed list keeps the Kubernetes error in its chain, so the library's
@@ -344,6 +362,9 @@ func (c *standaloneExportClient) List(ctx context.Context, list client.ObjectLis
 	}
 	if list.GetContinue() != "" {
 		return fmt.Errorf("%w: incomplete list page", ingest.ErrFetch)
+	}
+	if c.ignoreClaims {
+		return nil
 	}
 	kind := listKind(list)
 	if kind == "" {

@@ -59,12 +59,13 @@ High-level shape (read `.claude/rules/layering.md` for the rules that govern lay
 ```
 cmd/thv-registry-api/      # Entrypoint only: main.go, app wiring, generated OpenAPI docs
 pkg/registry/              # Importable library (experimental): model, persistence, postgres,
-                           # catalog, ingest, reconcile, operator, httpapi, formats — claims-free
+                           # catalog, ingest, reconcile, operator, httpapi, formats, cedar — claims-free
 internal/
   api/                     # HTTP layer — Chi routers and handlers
     v1/                      # Admin API (/v1/sources, /v1/registries, /v1/entries, /v1/me)
     server.go                # Mounts the library's consumer router at /registry (+ audit, 403 mapping)
     consumer_compat.go       # Keeps v1.5.4 consumer response shapes on top of library payloads
+    cedar_server.go          # Cedar mode: library consumer and admin routers behind the authorizer
     common/                  # Shared request/response helpers
   app/                     # Application assembly and lifecycle (builder + functional options)
     catalog.go               # Config → library definitions, config claims, sync runner
@@ -89,7 +90,7 @@ docs/                      # Developer documentation — configuration, deployme
 .claude/rules/             # Scoped design rules, auto-loaded by Claude Code per paths glob
 ```
 
-The server runs on the `pkg/registry` library in claims mode: consumer reads go through the library's `httpapi` router over a claims-aware `catalog.Reader`, sync runs as the library's leased jobs, and publish/delete use the library's `postgres.Entries`. Claims never enter the library — the server keeps them in step through `postgres.EntryWriteHook` (writes) and a module-internal context key that enables the `claims_visible` filter in the shared list query (reads). The app is assembled with a builder + functional options pattern (`app.NewRegistryApp(ctx, opts...)`) so tests can inject a storage factory, fetcher, Kubernetes operator and sync timing. Two HTTP servers are started: public (default `:8080`) and internal (`:8081` — health/readiness/version only, no auth).
+The server runs on the `pkg/registry` library in one of two authorization modes, fixed per deployment and recorded in the database (`authorization_mode`, migration 29): **claims mode** (default; v1.5.4 roles + claims) or **Cedar mode** (an `authorization` config block; `pkg/registry/cedar` admits each route, and `/v1` is the library's admin router behind `admin.enabled`). In claims mode, consumer reads go through the library's `httpapi` router over a claims-aware `catalog.Reader`, sync runs as the library's leased jobs, and publish/delete use the library's `postgres.Entries`. Claims never enter the library — the server keeps them in step through `postgres.EntryWriteHook` (writes) and a module-internal context key that enables the `claims_visible` filter in the shared list query (reads). The app is assembled with a builder + functional options pattern (`app.NewRegistryApp(ctx, opts...)`) so tests can inject a storage factory, fetcher, Kubernetes operator and sync timing. Two HTTP servers are started: public (default `:8080`) and internal (`:8081` — health/readiness/version only, no auth).
 
 ### Key Patterns for AI Development
 

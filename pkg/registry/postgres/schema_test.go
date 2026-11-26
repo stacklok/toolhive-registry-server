@@ -121,7 +121,7 @@ func TestEntriesDoNotCacheSchemaCompatibility(t *testing.T) {
 	for _, schema := range []struct {
 		version int
 		dirty   bool
-	}{{29, false}, {30, true}, {31, false}} {
+	}{{postgres.RequiredSchemaVersion + 1, false}, {postgres.RequiredSchemaVersion + 2, true}, {postgres.RequiredSchemaVersion + 3, false}} {
 		t.Run(fmt.Sprintf("schema-%d-dirty-%t", schema.version, schema.dirty), func(t *testing.T) {
 			t.Parallel()
 			defs, pool := newBackend(t)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -208,6 +209,10 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// openAPIDocument renders the OpenAPI document once. swag.ReadDoc rewrites
+// the shared spec on every call, so concurrent requests must not call it.
+var openAPIDocument = sync.OnceValues(func() (string, error) { return swag.ReadDoc("swagger") })
+
 // openAPIHandler handles OpenAPI specification requests
 //
 // @Summary		OpenAPI specification
@@ -218,7 +223,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 // @Failure		500	{object}	map[string]string
 // @Router		/openapi.json [get]
 func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
-	doc, err := swag.ReadDoc("swagger")
+	doc, err := openAPIDocument()
 	if err != nil {
 		slog.Error("Failed to read OpenAPI specification", "error", err)
 		w.Header().Set("Content-Type", "application/json")
