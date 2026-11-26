@@ -1,5 +1,5 @@
 # This Dockerfile is intended for docker-compose only.
-FROM index.docker.io/library/golang@sha256:ec47ea3725fea0cc88f6de94919aef19f40f12fc1ec0e2d1b3426dbf15ecca04 AS builder
+FROM index.docker.io/library/golang@sha256:5f1b98fa02fe396ebce2a0227a0e08309e11792915b9dd2e1f71053d7e7e6666 AS builder
 
 USER root
 
