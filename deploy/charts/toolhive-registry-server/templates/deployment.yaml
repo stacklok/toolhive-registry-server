@@ -67,6 +67,8 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
+            {{- /* Deprecated: unused by this release; kept for older images (see
+            leader-election-role.yaml). Remove in the next release. */}}
             - name: THV_REGISTRY_LEADER_ELECTION_ID
               value: "{{ include "toolhive-registry-server.fullname" . }}-leader-election"
             {{- if eq .Values.rbac.scope "namespace" }}

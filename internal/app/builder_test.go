@@ -2,10 +2,8 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 	"time"
 
@@ -17,10 +15,7 @@ import (
 
 	"github.com/stacklok/toolhive-registry-server/internal/app/storage/mocks"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/kubernetes"
 	mocksvc "github.com/stacklok/toolhive-registry-server/internal/service/mocks"
-	"github.com/stacklok/toolhive-registry-server/internal/sources"
-	pkgsync "github.com/stacklok/toolhive-registry-server/internal/sync"
 )
 
 func TestNewRegistryAppBuilder(t *testing.T) {
@@ -145,84 +140,6 @@ func TestWithAddress(t *testing.T) {
 	}
 }
 
-func TestWithRegistryName(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name         string
-		registryName string
-		want         string
-		wantErr      bool
-	}{
-		{
-			name:         "valid registry name",
-			registryName: "my-registry",
-			want:         "my-registry",
-			wantErr:      false,
-		},
-		{
-			name:         "valid registry name with underscores",
-			registryName: "my_registry_v1",
-			want:         "my_registry_v1",
-			wantErr:      false,
-		},
-		{
-			name:         "valid registry name with numbers",
-			registryName: "registry-123",
-			want:         "registry-123",
-			wantErr:      false,
-		},
-		{
-			name:         "valid long registry name",
-			registryName: "my-very-long-registry-name-with-many-segments",
-			want:         "my-very-long-registry-name-with-many-segments",
-			wantErr:      false,
-		},
-		{
-			name:         "invalid empty registry name",
-			registryName: "",
-			want:         "",
-			wantErr:      true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			opt := kubernetes.WithRegistryName(tt.registryName)
-
-			// Get the Option function type to extract the parameter type
-			optionFuncType := reflect.TypeOf(opt)
-			// Option is func(*mcpServerReconcilerOptions) error
-			// Get the element type of the first parameter
-			paramType := optionFuncType.In(0).Elem()
-
-			// Create a new instance of the struct
-			optionsValue := reflect.New(paramType)
-
-			// Call the option function
-			results := reflect.ValueOf(opt).Call([]reflect.Value{optionsValue})
-			errVal := results[0]
-			var err error
-			if !errVal.IsNil() {
-				err = errVal.Interface().(error)
-			}
-
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-
-			// Use reflection to get the registryName field
-			registryNameField := optionsValue.Elem().FieldByName("registryName")
-			require.True(t, registryNameField.IsValid(), "registryName field should exist")
-			got := registryNameField.String()
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
 func TestWithMiddlewares(t *testing.T) {
 	t.Parallel()
 	cfg := &registryAppConfig{}
@@ -236,19 +153,6 @@ func TestWithMiddlewares(t *testing.T) {
 	assert.Len(t, cfg.middlewares, 2)
 }
 
-func TestWithRegistryHandlerFactory(t *testing.T) {
-	t.Parallel()
-	cfg := &registryAppConfig{}
-	// Use nil factory for testing - we're just verifying the field is set
-	var testFactory sources.RegistryHandlerFactory
-
-	opt := WithRegistryHandlerFactory(testFactory)
-	err := opt(cfg)
-
-	require.NoError(t, err)
-	assert.Equal(t, testFactory, cfg.registryHandlerFactory)
-}
-
 func TestWithStorageFactory(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
@@ -260,19 +164,6 @@ func TestWithStorageFactory(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, testFactory, cfg.storageFactory)
-}
-
-func TestWithSyncManager(t *testing.T) {
-	t.Parallel()
-	cfg := &registryAppConfig{}
-	// Use nil sync manager for testing - we're just verifying the field is set
-	var testSyncManager pkgsync.Manager
-
-	opt := WithSyncManager(testSyncManager)
-	err := opt(cfg)
-
-	require.NoError(t, err)
-	assert.Equal(t, testSyncManager, cfg.syncManager)
 }
 
 func TestWithMeterProvider(t *testing.T) {
@@ -468,7 +359,7 @@ func TestBuildHTTPServer(t *testing.T) {
 			// Set auth middleware in config for tests
 			tt.config.authMiddleware = func(next http.Handler) http.Handler { return next }
 			tt.config.authInfoHandler = nil
-			server, err := buildHTTPServer(ctx, tt.config, mockSvc, nil)
+			server, err := buildHTTPServer(ctx, tt.config, mockSvc, emptyPages{}, nil)
 
 			require.NoError(t, err)
 			require.NotNil(t, server)
@@ -536,7 +427,7 @@ func TestBuildHTTPServer_WithMeterProvider(t *testing.T) {
 				authMiddleware: func(next http.Handler) http.Handler { return next },
 			}
 
-			server, err := buildHTTPServer(ctx, cfg, mockSvc, nil)
+			server, err := buildHTTPServer(ctx, cfg, mockSvc, emptyPages{}, nil)
 
 			require.NoError(t, err, tt.description)
 			require.NotNil(t, server)
@@ -604,456 +495,11 @@ func TestBuildHTTPServer_MetricsMiddlewareWithCustomMiddlewares(t *testing.T) {
 				authMiddleware: func(next http.Handler) http.Handler { return next },
 			}
 
-			server, err := buildHTTPServer(ctx, cfg, mockSvc, nil)
+			server, err := buildHTTPServer(ctx, cfg, mockSvc, emptyPages{}, nil)
 
 			require.NoError(t, err, tt.description)
 			require.NotNil(t, server)
 			assert.Len(t, cfg.middlewares, tt.expectedMiddlewareCount, tt.description)
-		})
-	}
-}
-
-func TestBuildServiceComponents(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	t.Run("success with storage factory", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := mocks.NewMockFactory(ctrl)
-		mockSvc := mocksvc.NewMockRegistryService(ctrl)
-
-		mockFactory.EXPECT().
-			CreateRegistryService(gomock.Any()).
-			Return(mockSvc, nil)
-
-		cfg := &registryAppConfig{
-			config:         createValidTestConfig(),
-			storageFactory: mockFactory,
-		}
-
-		svc, err := buildServiceComponents(ctx, cfg)
-
-		require.NoError(t, err)
-		require.NotNil(t, svc)
-		assert.Equal(t, mockSvc, svc)
-	})
-
-	t.Run("error when config is nil", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := mocks.NewMockFactory(ctrl)
-
-		// No expectations - config check happens before factory call
-
-		cfg := &registryAppConfig{
-			config:         nil,
-			storageFactory: mockFactory,
-		}
-
-		svc, err := buildServiceComponents(ctx, cfg)
-
-		require.Error(t, err)
-		assert.Nil(t, svc)
-	})
-
-	t.Run("error when factory fails", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := mocks.NewMockFactory(ctrl)
-
-		mockFactory.EXPECT().
-			CreateRegistryService(gomock.Any()).
-			Return(nil, fmt.Errorf("factory creation failed"))
-
-		cfg := &registryAppConfig{
-			config:         createValidTestConfig(),
-			storageFactory: mockFactory,
-		}
-
-		svc, err := buildServiceComponents(ctx, cfg)
-
-		require.Error(t, err)
-		assert.Nil(t, svc)
-	})
-}
-
-func TestBuildSyncComponents(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	t.Run("success with mock factory", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := mocks.NewMockFactory(ctrl)
-
-		mockFactory.EXPECT().
-			CreateStateService(gomock.Any()).
-			Return(nil, nil)
-
-		mockFactory.EXPECT().
-			CreateSyncWriter(gomock.Any()).
-			Return(nil, nil)
-
-		cfg := &registryAppConfig{
-			config:         createValidTestConfig(),
-			storageFactory: mockFactory,
-		}
-
-		coord, err := buildSyncComponents(ctx, cfg)
-
-		require.NoError(t, err)
-		require.NotNil(t, coord)
-	})
-
-	t.Run("error when state service creation fails", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := mocks.NewMockFactory(ctrl)
-
-		mockFactory.EXPECT().
-			CreateStateService(gomock.Any()).
-			Return(nil, fmt.Errorf("state service creation failed"))
-
-		cfg := &registryAppConfig{
-			config:         createValidTestConfig(),
-			storageFactory: mockFactory,
-		}
-
-		coord, err := buildSyncComponents(ctx, cfg)
-
-		require.Error(t, err)
-		assert.Nil(t, coord)
-	})
-
-	t.Run("error when sync writer creation fails", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := mocks.NewMockFactory(ctrl)
-
-		mockFactory.EXPECT().
-			CreateStateService(gomock.Any()).
-			Return(nil, nil)
-
-		mockFactory.EXPECT().
-			CreateSyncWriter(gomock.Any()).
-			Return(nil, fmt.Errorf("sync writer creation failed"))
-
-		cfg := &registryAppConfig{
-			config:         createValidTestConfig(),
-			storageFactory: mockFactory,
-		}
-
-		coord, err := buildSyncComponents(ctx, cfg)
-
-		require.Error(t, err)
-		assert.Nil(t, coord)
-	})
-}
-
-func TestBuildSyncComponents_WithMeterProvider(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	tests := []struct {
-		name          string
-		meterProvider metric.MeterProvider
-		description   string
-	}{
-		{
-			name:          "with meter provider creates available metrics",
-			meterProvider: noop.NewMeterProvider(),
-			description:   "coordinator should be created with metrics when meter provider is set",
-		},
-		{
-			name:          "without meter provider no metrics created",
-			meterProvider: nil,
-			description:   "coordinator should be created without metrics when meter provider is nil",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctrl := gomock.NewController(t)
-			mockFactory := mocks.NewMockFactory(ctrl)
-
-			mockFactory.EXPECT().
-				CreateStateService(gomock.Any()).
-				Return(nil, nil)
-
-			mockFactory.EXPECT().
-				CreateSyncWriter(gomock.Any()).
-				Return(nil, nil)
-
-			cfg := &registryAppConfig{
-				config:         createValidTestConfig(),
-				storageFactory: mockFactory,
-				meterProvider:  tt.meterProvider,
-			}
-
-			coord, err := buildSyncComponents(ctx, cfg)
-
-			require.NoError(t, err, tt.description)
-			require.NotNil(t, coord, tt.description)
-		})
-	}
-}
-
-func TestNewRegistryApp(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	// Helper to create a mock factory for success tests
-	newSuccessMockFactory := func(ctrl *gomock.Controller) *mocks.MockFactory {
-		mockFactory := mocks.NewMockFactory(ctrl)
-		mockSvc := mocksvc.NewMockRegistryService(ctrl)
-		mockFactory.EXPECT().CreateStateService(gomock.Any()).Return(nil, nil)
-		mockFactory.EXPECT().CreateSyncWriter(gomock.Any()).Return(nil, nil)
-		mockFactory.EXPECT().CreateRegistryService(gomock.Any()).Return(mockSvc, nil)
-		return mockFactory
-	}
-
-	t.Run("success with minimal config", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := newSuccessMockFactory(ctrl)
-
-		app, err := NewRegistryApp(ctx,
-			WithConfig(createValidTestConfig()),
-			WithStorageFactory(mockFactory),
-		)
-
-		require.NoError(t, err)
-		require.NotNil(t, app)
-		assert.NotNil(t, app.config)
-		assert.Equal(t, 1, len(app.config.Sources))
-		assert.NotNil(t, app.components)
-		assert.NotNil(t, app.components.SyncCoordinator)
-		assert.NotNil(t, app.components.RegistryService)
-		assert.NotNil(t, app.httpServer)
-		assert.NotNil(t, app.ctx)
-		assert.NotNil(t, app.cancelFunc)
-		assert.Equal(t, defaultHTTPAddress, app.httpServer.Addr)
-	})
-
-	t.Run("success with custom address", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := newSuccessMockFactory(ctrl)
-
-		app, err := NewRegistryApp(ctx,
-			WithConfig(createValidTestConfig()),
-			WithAddress(":9090"),
-			WithStorageFactory(mockFactory),
-		)
-
-		require.NoError(t, err)
-		require.NotNil(t, app)
-		assert.NotNil(t, app.httpServer)
-		assert.Equal(t, ":9090", app.httpServer.Addr)
-		assert.NotNil(t, app.components.SyncCoordinator)
-		assert.NotNil(t, app.components.RegistryService)
-	})
-
-	t.Run("success with multiple options", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockFactory := newSuccessMockFactory(ctrl)
-
-		app, err := NewRegistryApp(ctx,
-			WithConfig(createValidTestConfig()),
-			WithAddress(":8888"),
-			WithStorageFactory(mockFactory),
-		)
-
-		require.NoError(t, err)
-		require.NotNil(t, app)
-		assert.NotNil(t, app.config)
-		assert.NotNil(t, app.components)
-		assert.NotNil(t, app.components.SyncCoordinator)
-		assert.NotNil(t, app.components.RegistryService)
-		assert.NotNil(t, app.httpServer)
-		assert.Equal(t, ":8888", app.httpServer.Addr)
-		assert.NotNil(t, app.ctx)
-		assert.NotNil(t, app.cancelFunc)
-	})
-}
-
-func TestNewRegistryApp_ErrorPaths(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	tests := []struct {
-		name           string
-		setupMocks     func(*gomock.Controller) *mocks.MockFactory
-		opts           func(*mocks.MockFactory, string) []RegistryAppOptions
-		wantErrContain string
-		verifyCleanup  bool
-	}{
-		{
-			name: "error when option returns error",
-			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				return mocks.NewMockFactory(ctrl)
-			},
-			opts: func(_ *mocks.MockFactory, _ string) []RegistryAppOptions {
-				return []RegistryAppOptions{
-					WithConfig(createValidTestConfig()),
-					WithAddress(":"), // Invalid address triggers error
-				}
-			},
-			wantErrContain: "failed to build base configuration",
-			verifyCleanup:  false, // Storage factory not created yet
-		},
-		{
-			name: "error when state service creation fails",
-			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				mockFactory := mocks.NewMockFactory(ctrl)
-				mockFactory.EXPECT().
-					CreateStateService(gomock.Any()).
-					Return(nil, fmt.Errorf("state service creation failed"))
-				mockFactory.EXPECT().
-					Cleanup()
-				return mockFactory
-			},
-			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
-				return []RegistryAppOptions{
-					WithConfig(createValidTestConfig()),
-					WithStorageFactory(mockFactory),
-				}
-			},
-			wantErrContain: "failed to build sync components",
-			verifyCleanup:  true,
-		},
-		{
-			name: "error when sync writer creation fails",
-			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				mockFactory := mocks.NewMockFactory(ctrl)
-				mockFactory.EXPECT().
-					CreateStateService(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateSyncWriter(gomock.Any()).
-					Return(nil, fmt.Errorf("sync writer creation failed"))
-				mockFactory.EXPECT().
-					Cleanup()
-				return mockFactory
-			},
-			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
-				return []RegistryAppOptions{
-					WithConfig(createValidTestConfig()),
-					WithStorageFactory(mockFactory),
-				}
-			},
-			wantErrContain: "failed to build sync components",
-			verifyCleanup:  true,
-		},
-		{
-			name: "error when service component build fails",
-			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				mockFactory := mocks.NewMockFactory(ctrl)
-				mockFactory.EXPECT().
-					CreateStateService(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateSyncWriter(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateRegistryService(gomock.Any()).
-					Return(nil, fmt.Errorf("registry service creation failed"))
-				mockFactory.EXPECT().
-					Cleanup()
-				return mockFactory
-			},
-			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
-				return []RegistryAppOptions{
-					WithConfig(createValidTestConfig()),
-					WithStorageFactory(mockFactory),
-				}
-			},
-			wantErrContain: "failed to build service components",
-			verifyCleanup:  true,
-		},
-		{
-			name: "error when auth middleware creation fails",
-			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				mockFactory := mocks.NewMockFactory(ctrl)
-				mockSvc := mocksvc.NewMockRegistryService(ctrl)
-				mockFactory.EXPECT().
-					CreateStateService(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateSyncWriter(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateRegistryService(gomock.Any()).
-					Return(mockSvc, nil)
-				mockFactory.EXPECT().
-					Cleanup()
-				return mockFactory
-			},
-			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
-				// Config with invalid auth mode to trigger auth middleware error
-				invalidAuthConfig := createValidTestConfig()
-				invalidAuthConfig.Auth = nil // nil auth config causes error
-				return []RegistryAppOptions{
-					WithConfig(invalidAuthConfig),
-					WithStorageFactory(mockFactory),
-				}
-			},
-			wantErrContain: "failed to build auth middleware",
-			verifyCleanup:  true,
-		},
-		{
-			name: "error when service creation returns nil config error",
-			setupMocks: func(ctrl *gomock.Controller) *mocks.MockFactory {
-				mockFactory := mocks.NewMockFactory(ctrl)
-				mockSvc := mocksvc.NewMockRegistryService(ctrl)
-				mockFactory.EXPECT().
-					CreateStateService(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateSyncWriter(gomock.Any()).
-					Return(nil, nil)
-				mockFactory.EXPECT().
-					CreateRegistryService(gomock.Any()).
-					Return(mockSvc, nil)
-				mockFactory.EXPECT().
-					Cleanup()
-				return mockFactory
-			},
-			opts: func(mockFactory *mocks.MockFactory, _ string) []RegistryAppOptions {
-				// Config with unsupported auth mode to trigger error
-				invalidConfig := createValidTestConfig()
-				invalidConfig.Auth = &config.AuthConfig{
-					Mode: "unsupported-mode", // Invalid auth mode
-				}
-				return []RegistryAppOptions{
-					WithConfig(invalidConfig),
-					WithStorageFactory(mockFactory),
-				}
-			},
-			wantErrContain: "failed to build auth middleware",
-			verifyCleanup:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			ctrl := gomock.NewController(t)
-			tmpDir := t.TempDir()
-
-			mockFactory := tt.setupMocks(ctrl)
-			opts := tt.opts(mockFactory, tmpDir)
-
-			app, err := NewRegistryApp(ctx, opts...)
-
-			require.Error(t, err)
-			assert.Nil(t, app)
-			assert.Contains(t, err.Error(), tt.wantErrContain)
-			// Cleanup verification is done through gomock expectations
 		})
 	}
 }

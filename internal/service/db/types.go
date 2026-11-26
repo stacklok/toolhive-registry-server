@@ -42,55 +42,6 @@ type helper struct {
 	Position            int32
 }
 
-func listServersRowToHelper(
-	dbServer sqlc.ListServersRow,
-) helper {
-	return helper{
-		ID:                  dbServer.ID,
-		Name:                dbServer.Name,
-		Version:             dbServer.Version,
-		IsLatest:            dbServer.IsLatest,
-		CreatedAt:           dbServer.CreatedAt,
-		UpdatedAt:           dbServer.UpdatedAt,
-		Description:         dbServer.Description,
-		Title:               dbServer.Title,
-		Website:             dbServer.Website,
-		UpstreamMeta:        dbServer.UpstreamMeta,
-		ServerMeta:          dbServer.ServerMeta,
-		RepositoryUrl:       dbServer.RepositoryUrl,
-		RepositoryID:        dbServer.RepositoryID,
-		RepositorySubfolder: dbServer.RepositorySubfolder,
-		RepositoryType:      dbServer.RepositoryType,
-		Claims:              dbServer.Claims,
-		Position:            dbServer.Position,
-	}
-}
-
-func getServerVersionRowToHelper(
-	dbServer sqlc.GetServerVersionRow,
-) helper {
-	return helper{
-		ID:                  dbServer.ID,
-		Name:                dbServer.Name,
-		Version:             dbServer.Version,
-		IsLatest:            dbServer.IsLatest,
-		CreatedAt:           dbServer.CreatedAt,
-		UpdatedAt:           dbServer.UpdatedAt,
-		Description:         dbServer.Description,
-		Title:               dbServer.Title,
-		Website:             dbServer.Website,
-		UpstreamMeta:        dbServer.UpstreamMeta,
-		ServerMeta:          dbServer.ServerMeta,
-		RepositoryUrl:       dbServer.RepositoryUrl,
-		RepositoryID:        dbServer.RepositoryID,
-		RepositorySubfolder: dbServer.RepositorySubfolder,
-		RepositoryType:      dbServer.RepositoryType,
-		Claims:              dbServer.Claims,
-		SourceID:            dbServer.SourceID,
-		Position:            dbServer.Position,
-	}
-}
-
 func getServerVersionBySourceNameRowToHelper(
 	dbServer sqlc.GetServerVersionBySourceNameRow,
 ) helper {
@@ -213,23 +164,3 @@ func toKeyValueInputs(
 }
 
 // Reverse conversion helpers (API -> Database)
-
-// serializeKeyValueInputs serializes KeyValueInput slice to JSON bytes for database storage
-func serializeKeyValueInputs(kvInputs []model.KeyValueInput) ([]byte, error) {
-	if len(kvInputs) == 0 {
-		return []byte("[]"), nil
-	}
-
-	bytes, err := json.Marshal(kvInputs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize key-value inputs: %w", err)
-	}
-
-	return bytes, nil
-}
-
-// serializePublisherProvidedMeta serializes the PublisherProvided map to JSON bytes for storage.
-// maxMetaSize specifies the maximum allowed size in bytes and must be greater than zero.
-func serializePublisherProvidedMeta(meta *upstreamv0.ServerMeta, maxMetaSize int) ([]byte, error) {
-	return validators.SerializeServerMeta(meta, maxMetaSize)
-}

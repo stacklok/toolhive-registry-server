@@ -58,19 +58,25 @@ High-level shape (read `.claude/rules/layering.md` for the rules that govern lay
 
 ```
 cmd/thv-registry-api/      # Entrypoint only: main.go, app wiring, generated OpenAPI docs
+pkg/registry/              # Importable library (experimental): model, persistence, postgres,
+                           # catalog, ingest, reconcile, operator, httpapi, formats — claims-free
 internal/
   api/                     # HTTP layer — Chi routers and handlers
     v1/                      # Admin API (/v1/sources, /v1/registries, /v1/entries, /v1/me)
-    registry/v01/            # Upstream MCP Registry v0.1 consumer API (/registry/{name}/v0.1/...)
-    x/skills/                # Consumer extension: /x/dev.toolhive/skills
+    server.go                # Mounts the library's consumer router at /registry (+ audit, 403 mapping)
+    consumer_compat.go       # Keeps v1.5.4 consumer response shapes on top of library payloads
     common/                  # Shared request/response helpers
   app/                     # Application assembly and lifecycle (builder + functional options)
-    storage/                 # storage.Factory — DI seam for all DB-backed components
-  service/                 # Business logic — RegistryService interface, claim checks, dedup, cursors
-    db/                      # Postgres-backed service implementation and claims filter
-  sources/                 # Ingestion handlers — RegistryHandler, RegistryHandlerFactory (git, api, file)
-  sync/                    # Sync orchestration — Manager, Coordinator, writer (serializable txn)
-  kubernetes/              # K8s controllers — MCPServer / VirtualMCPServer / MCPRemoteProxy CRDs
+    catalog.go               # Config → library definitions, config claims, sync runner
+    storage/                 # storage.Factory — library adapters (with claims hook) + registry service
+  claims/                  # Claims-mode rules: matchers, consumer claims reader (claims_visible)
+  service/                 # Admin business logic — RegistryService interface, claim gates
+    db/                      # Postgres-backed admin service, ClaimsHook for library writes
+  sources/                 # Inline registry data validation for API-created file sources
+  sync/
+    standalone/              # Supervises the library's leased sync jobs and K8s/inline workers
+    writer/                  # Transactional COPY writer used by pkg/registry/postgres
+  kubernetes/              # Adapter for the library's operator runner (client, authz-claims annotations)
   auth/                    # Authentication (JWT middleware, validators, OAuth config)
   authz/                   # Authorization integration tests (role + claim enforcement)
   audit/                   # Audit logging middleware (wraps all /v1 handlers)
@@ -83,14 +89,14 @@ docs/                      # Developer documentation — configuration, deployme
 .claude/rules/             # Scoped design rules, auto-loaded by Claude Code per paths glob
 ```
 
-The app is assembled with a builder + functional options pattern (`app.NewRegistryApp(ctx, opts...)`) so tests can inject fakes for storage, sync manager, registry handler factory, and coordinator options. Two HTTP servers are started: public (default `:8080`) and internal (`:8081` — health/readiness/version only, no auth).
+The server runs on the `pkg/registry` library in claims mode: consumer reads go through the library's `httpapi` router over a claims-aware `catalog.Reader`, sync runs as the library's leased jobs, and publish/delete use the library's `postgres.Entries`. Claims never enter the library — the server keeps them in step through `postgres.EntryWriteHook` (writes) and a module-internal context key that enables the `claims_visible` filter in the shared list query (reads). The app is assembled with a builder + functional options pattern (`app.NewRegistryApp(ctx, opts...)`) so tests can inject a storage factory, fetcher, Kubernetes operator and sync timing. Two HTTP servers are started: public (default `:8080`) and internal (`:8081` — health/readiness/version only, no auth).
 
 ### Key Patterns for AI Development
 
 - **Builder + functional options**: Wire new components through `internal/app/builder.go` using `With*` options. Factory interfaces preferred over direct dependencies — tests need injection points.
-- **Layered flow**: API handlers call `service.RegistryService`, which calls storage and source interfaces. API must not call DB or `sources.*` directly. Service must not import `net/http` or `client-go`.
+- **Layered flow**: admin handlers call `service.RegistryService`; consumer routes are the library's router over a `catalog.Reader`. API must not call DB directly (inject lookups, as `api.WithManagedSourceIDs` does). Service must not import `net/http` or `client-go`.
 - **Source type inference**: `SourceConfig.GetType()` is the single source of truth for which source type a config represents. No `type:` field — exactly one of `git/api/file/managed/kubernetes` blocks must be set.
-- **Record filters**: Claims filtering and dedup are composed as `RecordFilter` chains in `internal/service/db/`, applied during row streaming. No SQL-level JSONB operators — see `.claude/rules/data-model.md` §7.
+- **Claims filtering**: consumer lists filter by claims before choosing each name's winning source, in SQL (`claims_visible`, the one sanctioned exception — `.claude/rules/data-model.md` §7), pinned to the Go rule in `internal/claims` by a shared case table. Single-resource gates stay in Go.
 - **Table-driven tests**: Standard pattern throughout. Mock HTTP clients, filesystem, Git operations.
 - **Mock generation**: Use `go.uber.org/mock` via `//go:generate mockgen` directives. Run `task gen` to regenerate — never hand-write mocks.
 
@@ -102,8 +108,8 @@ The app is assembled with a builder + functional options pattern (`app.NewRegist
 - Mock external dependencies (HTTP clients, filesystem, Git operations, K8s client)
 - Integration-style authz tests live in [internal/authz/](internal/authz/) and exercise the full stack with different auth postures (anonymous, oauth-no-authz, oauth+authz)
 - Service-layer mocks: [internal/service/mocks/](internal/service/mocks/)
-- Source handler mocks: [internal/sources/mocks/](internal/sources/mocks/)
-- Sync mocks: [internal/sync/mocks/](internal/sync/mocks/) and [internal/sync/writer/mocks/](internal/sync/writer/mocks/)
+- Sync runtime mocks: [internal/sync/standalone/mocks/](internal/sync/standalone/mocks/); library job/fetcher mocks: [pkg/registry/reconcile/mocks/](pkg/registry/reconcile/mocks/)
+- Consumer-response compatibility against v1.5.4 is easiest to check end to end: run both binaries on the same database and diff responses
 
 ## AI Assistant Best Practices
 
@@ -129,8 +135,8 @@ The app is assembled with a builder + functional options pattern (`app.NewRegist
 **Adding a new source type:**
 1. Add the type constant in [internal/config/config.go](internal/config/config.go) and a new config struct
 2. Update `SourceConfig`, `GetType()`, `validateSourceTypeCount`, `validateSourceSpecificConfig`, and `IsNonSyncedSource` if appropriate — `.claude/rules/data-model.md` §2
-3. Implement `sources.RegistryHandler` (if synced) or wire a controller (if non-synced, like Kubernetes)
-4. Register in [internal/sources/factory.go](internal/sources/factory.go)
+3. Add the matching `persistence.SourceDefinition` spec and fetcher in `pkg/registry` (`ingest` for polled sources, a worker like `operator` for watched ones)
+4. Map the config block in `sourceDefinition` ([internal/app/catalog.go](internal/app/catalog.go))
 5. Add a DB migration if new columns are needed
 6. Run `task gen`, then add table-driven tests and a round-trip config-load test
 

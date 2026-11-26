@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -49,7 +50,7 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 			if v.SourceID != id {
 				continue
 			}
-			key := string(v.Kind) + "\x00" + v.Name
+			key := winnerKey(v)
 			if _, exists := winners[key]; !exists {
 				winners[key] = id
 			}
@@ -73,7 +74,7 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 	}
 	entries := make([]persistence.Entry, 0)
 	for _, v := range m.records {
-		if v.Kind != query.Kind || winners[string(v.Kind)+"\x00"+v.Name] != v.SourceID {
+		if v.Kind != query.Kind || winners[winnerKey(v)] != v.SourceID {
 			continue
 		}
 		v = m.latest(v)
@@ -96,21 +97,20 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 		if query.Search != "" && !sqlLike(strings.ToLower(v.Name), needle) && !sqlLike(strings.ToLower(title), needle) && !sqlLike(strings.ToLower(description), needle) {
 			continue
 		}
-		if cur.Name != "" && (v.Name < cur.Name || v.Name == cur.Name && v.Version <= cur.Version) {
+		if cur.Name != "" && slices.Compare([]string{v.Name, v.Version, namespace}, []string{cur.Name, cur.Version, cur.Namespace}) <= 0 {
 			continue
 		}
 		entries = append(entries, clone(v))
 	}
 	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Name != entries[j].Name {
-			return entries[i].Name < entries[j].Name
-		}
-		return entries[i].Version < entries[j].Version
+		return slices.Compare([]string{entries[i].Name, entries[i].Version, entryNamespace(entries[i])},
+			[]string{entries[j].Name, entries[j].Version, entryNamespace(entries[j])}) < 0
 	})
 	page := persistence.EntryPage{}
 	if len(entries) > query.Limit {
 		last := entries[query.Limit-1]
-		data, _ := json.Marshal(memoryViewCursor{Format: 2, Kind: query.Kind, Name: last.Name, Version: last.Version})
+		data, _ := json.Marshal(memoryViewCursor{Format: 2, Kind: query.Kind, Name: last.Name, Version: last.Version,
+			Namespace: entryNamespace(last)})
 		page.NextCursor = base64.RawURLEncoding.EncodeToString(data)
 		if len(page.NextCursor) > persistence.MaxCursorBytes {
 			return persistence.EntryPage{}, persistence.ErrInvalid
@@ -125,10 +125,17 @@ func (m *memory) ListViewEntries(ctx context.Context, view string, query persist
 }
 
 type memoryViewCursor struct {
-	Format  int
-	Kind    persistence.EntryKind
-	Name    string
-	Version string
+	Format    int
+	Kind      persistence.EntryKind
+	Name      string
+	Version   string
+	Namespace string `json:",omitempty"`
+}
+
+// winnerKey identifies what sources compete for: a server name, or a skill's
+// or plugin's name within its namespace.
+func winnerKey(v persistence.Entry) string {
+	return string(v.Kind) + "\x00" + v.Name + "\x00" + entryNamespace(v)
 }
 
 // sqlLike matches value against a SQL LIKE pattern with the default escape:

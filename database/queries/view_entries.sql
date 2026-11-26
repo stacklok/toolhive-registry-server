@@ -2,14 +2,22 @@
 -- Walks entries of one kind in name order, then their versions, and keeps a
 -- version only when its entry wins the name: no entry with a version in a
 -- higher-priority source of the view (position, then source name) has the same
--- kind and name. Winners are chosen before the version, latest, search and time
--- filters, so a filter never promotes a lower-priority source. Names and
--- versions sort and compare in the database's default collation, as v1.5.4's
--- ORDER BY name, version did, so v1.5.4 cursors keep their position. Search is
--- v1.5.4's LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and
--- a backslash escapes the next character. The walk follows
+-- kind and name and, for skills and plugins, a version in the same namespace,
+-- so io.a/x and io.b/x from different sources are both reachable. Winners are
+-- chosen before the version, latest, search and time filters, so a filter never
+-- promotes a lower-priority source. Names and versions sort and compare in the
+-- database's default collation, as v1.5.4's ORDER BY name, version did, so
+-- v1.5.4 cursors keep their position; namespace is the last sort key, so equal
+-- name/version pairs page deterministically. A cursor without a namespace
+-- (servers, and v1.5.4 cursors) resumes after its whole name/version. Search is v1.5.4's
+-- LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and a
+-- backslash escapes the next character. The walk follows
 -- registry_entry_type_name_idx and stops at the page size; the redundant
 -- e.name >= cursor bound lets the index scan start at the cursor.
+-- caller is NULL for the library. The server's claims mode passes the caller's
+-- JWT claims; an entry the caller cannot see then neither appears nor hides a
+-- lower-priority source's entry of the same name (claims_visible, migration
+-- 28). This is the one sanctioned JSONB claims check in SQL.
 WITH page AS (
  SELECT v.id
  FROM registry_entry e
@@ -26,7 +34,12 @@ WITH page AS (
   WHERE hi.entry_type=e.entry_type AND hi.name=e.name AND hi.id<>e.id
   AND (hrs.position<rs.position
    OR (hrs.position=rs.position AND hsrc.name COLLATE "C"<src.name COLLATE "C"))
-  AND EXISTS(SELECT 1 FROM entry_version hv WHERE hv.entry_id=hi.id))
+  AND EXISTS(SELECT 1 FROM entry_version hv
+   LEFT JOIN skill hsk ON hsk.version_id=hv.id LEFT JOIN plugin hpl ON hpl.version_id=hv.id
+   WHERE hv.entry_id=hi.id
+   AND coalesce(hsk.namespace,hpl.namespace,'')=coalesce(sk.namespace,pl.namespace,''))
+  AND (sqlc.narg(caller)::jsonb IS NULL OR claims_visible(sqlc.narg(caller)::jsonb,hi.claims)))
+ AND (sqlc.narg(caller)::jsonb IS NULL OR claims_visible(sqlc.narg(caller)::jsonb,e.claims))
  AND (sqlc.narg(name)::text IS NULL OR e.name=sqlc.narg(name)::text)
  AND (sqlc.narg(namespace)::text IS NULL OR sk.namespace=sqlc.narg(namespace)::text OR pl.namespace=sqlc.narg(namespace)::text)
  AND (sqlc.narg(version)::text IS NULL OR v.version=sqlc.narg(version)::text)
@@ -38,12 +51,16 @@ WITH page AS (
   OR LOWER(v.title) LIKE LOWER('%'||sqlc.narg(search)::text||'%')
   OR LOWER(v.description) LIKE LOWER('%'||sqlc.narg(search)::text||'%'))
  AND (sqlc.narg(cursor_name)::text IS NULL OR e.name>=sqlc.narg(cursor_name)::text)
- AND (sqlc.narg(cursor_name)::text IS NULL OR (e.name,v.version)>
-  (sqlc.narg(cursor_name)::text,sqlc.narg(cursor_version)::text))
- ORDER BY e.name,v.version
+ AND (sqlc.narg(cursor_name)::text IS NULL
+  OR (sqlc.narg(cursor_namespace)::text IS NULL
+   AND (e.name,v.version)>(sqlc.narg(cursor_name)::text,sqlc.narg(cursor_version)::text))
+  OR (e.name,v.version,coalesce(sk.namespace,pl.namespace,''))>
+  (sqlc.narg(cursor_name)::text,sqlc.narg(cursor_version)::text,sqlc.narg(cursor_namespace)::text))
+ ORDER BY e.name,v.version,coalesce(sk.namespace,pl.namespace,'')
  LIMIT sqlc.arg(page_size)::bigint
 )
 SELECT e.source_id::text AS source_id,v.id::text AS id,e.name,v.version,v.title,v.description,
+ coalesce(sk.namespace,pl.namespace,'')::text AS namespace,
  v.created_at,v.updated_at,coalesce(l.latest_version_id=v.id,false)::boolean AS is_latest,
  to_jsonb(s) AS server_data,to_jsonb(sk) AS skill_data,to_jsonb(pl) AS plugin_data,
  (SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.pkg_identifier,p.transport),'[]'::jsonb)
@@ -66,4 +83,4 @@ LEFT JOIN latest_entry_version l ON l.source_id=e.source_id AND l.entry_type=e.e
 LEFT JOIN mcp_server s ON s.version_id=v.id
 LEFT JOIN skill sk ON sk.version_id=v.id
 LEFT JOIN plugin pl ON pl.version_id=v.id
-ORDER BY e.name,v.version;
+ORDER BY e.name,v.version,coalesce(sk.namespace,pl.namespace,'');

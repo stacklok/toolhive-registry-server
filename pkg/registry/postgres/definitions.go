@@ -394,7 +394,7 @@ func (d *Definitions) write(ctx context.Context, fn func(pgx.Tx) error) error {
 
 // RequiredSchemaVersion is the database migration version this adapter writes
 // against. Hosts apply the registry migrations before constructing writers.
-const RequiredSchemaVersion = 27
+const RequiredSchemaVersion = 28
 
 func requireSchema(ctx context.Context, tx pgx.Tx) error {
 	// Held for the whole transaction; never cache compatibility across writes.
@@ -446,7 +446,7 @@ func writeTx(ctx context.Context, pool *pgxpool.Pool, lock bool, fn func(pgx.Tx)
 			continue
 		}
 		var pg *pgconn.PgError
-		if errors.As(err, &pg) && (pg.Code == "40001" || pg.Code == "40P01") {
+		if errors.As(err, &pg) && (pg.Code == pgSerializationFailure || pg.Code == pgDeadlockDetected) {
 			continue
 		}
 		return classify(err)
@@ -707,11 +707,8 @@ func classify(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, context.Canceled) {
-		return context.Canceled
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return context.DeadlineExceeded
+	if passed := passThrough(err); passed != nil {
+		return passed
 	}
 	if errors.Is(err, persistence.ErrInvalid) || errors.Is(err, persistence.ErrNotFound) ||
 		errors.Is(err, persistence.ErrConflict) || errors.Is(err, persistence.ErrInUse) ||
@@ -725,7 +722,7 @@ func classify(err error) error {
 			return fmt.Errorf("%w: duplicate definition", persistence.ErrConflict)
 		case "23503":
 			return persistence.ErrInUse
-		case "40001", "40P01":
+		case pgSerializationFailure, pgDeadlockDetected:
 			return retryable{}
 		default:
 			return unavailable(err)
@@ -745,4 +742,20 @@ func unavailable(err error) error {
 	}
 	slog.Error("Registry storage operation failed", attrs...)
 	return persistence.ErrUnavailable
+}
+
+// passThrough returns the error classify reports unchanged: cancellation, or
+// an entry write hook's own error. It returns nil for everything else.
+func passThrough(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	var hook hookError
+	if errors.As(err, &hook) {
+		return hook.err
+	}
+	return nil
 }

@@ -34,7 +34,9 @@ jobs:
               ./database
               ./database/dbtest
               ./cmd/thv-registry-api/app
+              ./internal/app
               ./internal/app/storage
+              ./internal/claims
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -80,7 +82,9 @@ jobs:
         ./database
         ./database/dbtest
         ./cmd/thv-registry-api/app
+        ./internal/app
         ./internal/app/storage
+        ./internal/claims
         ./internal/db/sqlc
         ./internal/service/db
         ./pkg/registry/postgres

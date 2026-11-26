@@ -30,7 +30,7 @@ import (
 	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	registryapp "github.com/stacklok/toolhive-registry-server/internal/app"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/coordinator"
+	"github.com/stacklok/toolhive-registry-server/pkg/registry/reconcile"
 )
 
 // ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ func setupEnvCustom(t *testing.T, authCfg *config.AuthConfig, sources []config.S
 		registryapp.WithConfig(cfg),
 		registryapp.WithAddress(":0"),
 		registryapp.WithInternalAddress(":0"),
-		registryapp.WithCoordinatorOptions(coordinator.TestingWithPollingInterval(500*time.Millisecond)),
+		registryapp.WithReconcileOptions(reconcile.Options{PollInterval: 500 * time.Millisecond, LeaseDuration: time.Minute}),
 	)
 	require.NoError(t, err)
 

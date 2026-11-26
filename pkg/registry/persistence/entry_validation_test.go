@@ -49,6 +49,26 @@ func TestValidateSnapshot(t *testing.T) {
 	}
 }
 
+func TestValidateSnapshotAcceptsServerWithoutSchema(t *testing.T) {
+	t.Parallel()
+	var snapshot model.Snapshot
+	snapshot.Data.Servers = []model.Server{
+		{Schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+			Name: "io.test/with-schema", Version: "1.0.0", Description: "has $schema"},
+		{Name: "io.test/no-schema", Version: "1.0.0", Description: "registry files may omit $schema"},
+	}
+	if err := persistence.ValidateSnapshot(&snapshot); err != nil {
+		t.Fatalf("server without $schema rejected: %v", err)
+	}
+	if snapshot.Data.Servers[1].Schema != "" {
+		t.Fatalf("validation changed the stored $schema to %q", snapshot.Data.Servers[1].Schema)
+	}
+	snapshot.Data.Servers[0].Schema = "not a uri"
+	if err := persistence.ValidateSnapshot(&snapshot); !errors.Is(err, persistence.ErrInvalid) {
+		t.Fatalf("a present but invalid $schema must still fail: %v", err)
+	}
+}
+
 func TestValidateSnapshotRemembersOnlyValidContent(t *testing.T) {
 	t.Parallel()
 	server := model.Server{Schema: "https://example.org/schema.json", Name: "com.example/remembered", Version: "1", Description: "ok"}

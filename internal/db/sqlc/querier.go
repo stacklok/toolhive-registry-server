@@ -163,6 +163,9 @@ type Querier interface {
 	// Insert a new source with full configuration. creation_type is passed as a parameter.
 	InsertSource(ctx context.Context, arg InsertSourceParams) (Source, error)
 	InsertSourceSync(ctx context.Context, arg InsertSourceSyncParams) (uuid.UUID, error)
+	// Forces the next sync of a source to commit a full snapshot, so entry claims
+	// are recomputed even when the fetched data is unchanged.
+	InvalidateSourceSyncBaseline(ctx context.Context, name string) error
 	// The previous status, start time and attempt count are kept in prev_* so an
 	// unchanged fetch can put them back; ended_at and error_msg are left alone, so
 	// the last finish time and message stay visible while the attempt runs. A row
@@ -233,6 +236,17 @@ type Querier interface {
 	RepairPruneLatest(ctx context.Context) error
 	RepairSetLatest(ctx context.Context, arg RepairSetLatestParams) error
 	RepairUpsertLatestFromTemp(ctx context.Context) error
+	// Stores a config-file registry's claims after the library reconciled the
+	// definitions; the claims-free library never writes registry claims.
+	SetConfigRegistryClaims(ctx context.Context, arg SetConfigRegistryClaimsParams) (int64, error)
+	// Stores a config-file source's claims after the library reconciled the
+	// definitions; the claims-free library never writes source claims.
+	SetConfigSourceClaims(ctx context.Context, arg SetConfigSourceClaimsParams) (int64, error)
+	// Sets one entry name's claims inside a library write transaction (claims mode only).
+	SetEntryClaims(ctx context.Context, arg SetEntryClaimsParams) error
+	// Gives every entry of a synced source the source's claims, inside the
+	// library's snapshot transaction (claims mode only).
+	SetSourceEntryClaimsFromSource(ctx context.Context, sourceID uuid.UUID) error
 	UnlinkAllRegistrySources(ctx context.Context, registryID uuid.UUID) error
 	UnlinkRegistrySource(ctx context.Context, arg UnlinkRegistrySourceParams) error
 	UpdateRegistryEntryClaims(ctx context.Context, arg UpdateRegistryEntryClaimsParams) (int64, error)
@@ -265,14 +279,22 @@ type Querier interface {
 	// Walks entries of one kind in name order, then their versions, and keeps a
 	// version only when its entry wins the name: no entry with a version in a
 	// higher-priority source of the view (position, then source name) has the same
-	// kind and name. Winners are chosen before the version, latest, search and time
-	// filters, so a filter never promotes a lower-priority source. Names and
-	// versions sort and compare in the database's default collation, as v1.5.4's
-	// ORDER BY name, version did, so v1.5.4 cursors keep their position. Search is
-	// v1.5.4's LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and
-	// a backslash escapes the next character. The walk follows
+	// kind and name and, for skills and plugins, a version in the same namespace,
+	// so io.a/x and io.b/x from different sources are both reachable. Winners are
+	// chosen before the version, latest, search and time filters, so a filter never
+	// promotes a lower-priority source. Names and versions sort and compare in the
+	// database's default collation, as v1.5.4's ORDER BY name, version did, so
+	// v1.5.4 cursors keep their position; namespace is the last sort key, so equal
+	// name/version pairs page deterministically. A cursor without a namespace
+	// (servers, and v1.5.4 cursors) resumes after its whole name/version. Search is v1.5.4's
+	// LOWER(col) LIKE LOWER('%'||search||'%'): % and _ are wildcards and a
+	// backslash escapes the next character. The walk follows
 	// registry_entry_type_name_idx and stops at the page size; the redundant
 	// e.name >= cursor bound lets the index scan start at the cursor.
+	// caller is NULL for the library. The server's claims mode passes the caller's
+	// JWT claims; an entry the caller cannot see then neither appears nor hides a
+	// lower-priority source's entry of the same name (claims_visible, migration
+	// 28). This is the one sanctioned JSONB claims check in SQL.
 	ViewEntryList(ctx context.Context, arg ViewEntryListParams) ([]ViewEntryListRow, error)
 }
 

@@ -59,10 +59,12 @@ func RunViewEntries(t *testing.T, factory ViewEntriesFactory) {
 				since := time.Now().UTC()
 				time.Sleep(2 * time.Millisecond)
 				snap = model.Snapshot{}
+				// Skills and plugins compete per namespace: the lower source's
+				// versions sit in the winner's namespace, so they must lose.
 				for _, version := range []string{"1", "2", "9"} {
-					appendViewVersion(&snap, kind, name, version, "org.loser", "lower-only-search")
+					appendViewVersion(&snap, kind, name, version, "org.winner", "lower-only-search")
 				}
-				appendViewVersion(&snap, kind, viewEntryName(kind, "z-last"), "1", "org.loser", "last")
+				appendViewVersion(&snap, kind, viewEntryName(kind, "z-last"), "1", "org.winner", "last")
 				// A server and a skill/plugin with the same name must not share ownership.
 				otherKind := persistence.SkillKind
 				if kind == otherKind {
@@ -183,7 +185,14 @@ func RunViewEntries(t *testing.T, factory ViewEntriesFactory) {
 					t.Fatal(e)
 				}
 				next, e := reader.List(ctx, consumerView, catalog.Query{Kind: kind, Limit: 1, Cursor: first.NextCursor})
-				if e != nil || len(next.Entries) != 1 || next.Entries[0].SourceID != b.ID || next.Entries[0].Version != "9" {
+				// The cursor sits after a's item@2 in org.older. Servers resume at
+				// b's 9; skills and plugins also order by namespace, so b's item@2
+				// in org.winner (after org.older) is next.
+				wantNext := "9"
+				if kind != persistence.ServerKind {
+					wantNext = "2"
+				}
+				if e != nil || len(next.Entries) != 1 || next.Entries[0].SourceID != b.ID || next.Entries[0].Version != wantNext {
 					t.Fatalf("live winner mutation: %+v / %v", next, e)
 				}
 				latest, e := reader.Get(ctx, consumerView, catalog.EntryName{Kind: kind, Name: name}, catalog.VersionSelector{Latest: true})
@@ -191,6 +200,49 @@ func RunViewEntries(t *testing.T, factory ViewEntriesFactory) {
 					t.Fatalf("empty-source ownership: %+v / %v", latest, e)
 				}
 			})
+			if kind != persistence.ServerKind {
+				t.Run("namespaces compete separately", func(t *testing.T) {
+					t.Parallel()
+					defs, entries, views := factory(t)
+					ctx := t.Context()
+					a := newEntrySource(t, defs, "namespace-a")
+					b := newEntrySource(t, defs, "namespace-b")
+					reader, err := catalog.NewReader(views)
+					if err != nil {
+						t.Fatal(err)
+					}
+					name := viewEntryName(kind, "shared")
+					snap := model.Snapshot{}
+					appendViewVersion(&snap, kind, name, "1", "io.a", "from a")
+					if err = entries.ReplaceSnapshot(ctx, a, snap); err != nil {
+						t.Fatal(err)
+					}
+					snap = model.Snapshot{}
+					appendViewVersion(&snap, kind, name, "1", "io.b", "from b")
+					appendViewVersion(&snap, kind, name, "2", "io.b", "from b")
+					if err = entries.ReplaceSnapshot(ctx, b, snap); err != nil {
+						t.Fatal(err)
+					}
+					createView(t, defs, consumerView, []string{a.Name, b.Name})
+					for _, tc := range []struct{ namespace, source, latest string }{
+						{"io.a", a.ID, "1"}, {"io.b", b.ID, "2"},
+					} {
+						identity := catalog.EntryName{Kind: kind, Name: name, Namespace: tc.namespace}
+						got, e := reader.Get(ctx, consumerView, identity, catalog.VersionSelector{Latest: true})
+						if e != nil || got.SourceID != tc.source || got.Version != tc.latest {
+							t.Fatalf("%s latest: %+v / %v", tc.namespace, got, e)
+						}
+					}
+					// Equal name and version in two namespaces page without loss.
+					for _, limit := range []int{1, 2, 1000} {
+						all := walkView(t, reader, consumerView, catalog.Query{Kind: kind, Limit: limit})
+						if len(all) != 3 || all[0].SourceID != a.ID || all[1].SourceID != b.ID || all[1].Version != "1" ||
+							all[2].SourceID != b.ID || all[2].Version != "2" {
+							t.Fatalf("namespaced page at %d: %+v", limit, all)
+						}
+					}
+				})
+			}
 			t.Run("bounds and histories", func(t *testing.T) {
 				t.Parallel()
 				defs, entries, views := factory(t)
@@ -601,7 +653,7 @@ func walkView(t *testing.T, r catalog.Reader, view string, q catalog.Query) []pe
 	// contiguous run per name, and the same sequence as one unpaginated read.
 	seen, done := map[string]bool{}, map[string]bool{}
 	for i, v := range all {
-		key := v.Name + "\x00" + v.Version
+		key := v.Name + "\x00" + v.Version + "\x00" + entryNamespace(v)
 		if seen[key] || done[v.Name] {
 			t.Fatal("non-deterministic ordering", reflect.ValueOf(all))
 		}
@@ -653,4 +705,17 @@ func viewDescription(v persistence.Entry) string {
 		return v.Skill.Description
 	}
 	return v.Plugin.Description
+}
+
+// entryNamespace is the last sort key of a view page: a skill's or plugin's
+// namespace, empty for servers.
+func entryNamespace(e persistence.Entry) string {
+	switch {
+	case e.Skill != nil:
+		return e.Skill.Namespace
+	case e.Plugin != nil:
+		return e.Plugin.Namespace
+	default:
+		return ""
+	}
 }

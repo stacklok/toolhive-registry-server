@@ -252,175 +252,66 @@ VALUES ($1, $2, $3)`, entryID, name, version)
 	require.NoError(t, err)
 }
 
-func TestDatabaseFactory_CreateStateService(t *testing.T) {
+func TestDatabaseFactory_CreateCatalogAndService(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
+	require.NoError(t, database.MigrateUp(ctx, db))
 
-	// Migrate database
-	err := database.MigrateUp(ctx, db)
-	require.NoError(t, err)
-
-	tests := []struct {
-		name    string
-		setup   func(*testing.T) *DatabaseFactory
-		wantErr bool
-	}{
-		{
-			name: "successfully creates state service",
-			setup: func(t *testing.T) *DatabaseFactory {
-				t.Helper()
-				cfg := &config.Config{
-					Database: &config.DatabaseConfig{
-						Host:     db.Config().Host,
-						Port:     int(db.Config().Port),
-						User:     db.Config().User,
-						Database: db.Config().Database,
-						SSLMode:  "disable",
-					},
-				}
-				factory, err := NewDatabaseFactory(ctx, cfg)
-				require.NoError(t, err)
-				t.Cleanup(factory.Cleanup)
-				return factory
-			},
-			wantErr: false,
+	cfg := &config.Config{
+		Database: &config.DatabaseConfig{
+			Host:     db.Config().Host,
+			Port:     int(db.Config().Port),
+			User:     db.Config().User,
+			Password: dbtest.DBPass,
+			Database: db.Config().Database,
+			SSLMode:  "disable",
 		},
 	}
+	factory, err := NewDatabaseFactory(ctx, cfg)
+	require.NoError(t, err)
+	t.Cleanup(factory.Cleanup)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	catalog, err := factory.CreateCatalog(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, catalog.Definitions)
+	require.NotNil(t, catalog.Entries)
+	require.NotNil(t, catalog.Jobs)
+	assert.Same(t, factory.pool, catalog.Pool, "adapters borrow the factory's pool")
 
-			factory := tt.setup(t)
-			stateService, err := factory.CreateStateService(ctx)
+	registryService, err := factory.CreateRegistryService(ctx, catalog.Entries)
+	require.NoError(t, err)
+	require.NotNil(t, registryService)
 
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Nil(t, stateService)
-				return
-			}
-
-			require.NoError(t, err)
-			require.NotNil(t, stateService)
-		})
-	}
+	_, err = factory.CreateRegistryService(ctx, nil)
+	require.Error(t, err, "publish and delete need the library publisher")
 }
 
-func TestDatabaseFactory_CreateSyncWriter(t *testing.T) {
+func TestDatabaseFactory_CreateCatalogRequiresMigratedSchema(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 	t.Cleanup(cleanupFunc)
 
-	// Migrate database
-	err := database.MigrateUp(ctx, db)
-	require.NoError(t, err)
-
-	tests := []struct {
-		name    string
-		setup   func(*testing.T) *DatabaseFactory
-		wantErr bool
-	}{
-		{
-			name: "successfully creates sync writer",
-			setup: func(t *testing.T) *DatabaseFactory {
-				t.Helper()
-				cfg := &config.Config{
-					Database: &config.DatabaseConfig{
-						Host:     db.Config().Host,
-						Port:     int(db.Config().Port),
-						User:     db.Config().User,
-						Database: db.Config().Database,
-						SSLMode:  "disable",
-					},
-				}
-				factory, err := NewDatabaseFactory(ctx, cfg)
-				require.NoError(t, err)
-				t.Cleanup(factory.Cleanup)
-				return factory
-			},
-			wantErr: false,
+	cfg := &config.Config{
+		Database: &config.DatabaseConfig{
+			Host:     db.Config().Host,
+			Port:     int(db.Config().Port),
+			User:     db.Config().User,
+			Password: dbtest.DBPass,
+			Database: db.Config().Database,
+			SSLMode:  "disable",
 		},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			factory := tt.setup(t)
-			syncWriter, err := factory.CreateSyncWriter(ctx)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Nil(t, syncWriter)
-				return
-			}
-
-			require.NoError(t, err)
-			require.NotNil(t, syncWriter)
-		})
-	}
-}
-
-func TestDatabaseFactory_CreateRegistryService(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
-	t.Cleanup(cleanupFunc)
-
-	// Migrate database
-	err := database.MigrateUp(ctx, db)
+	factory, err := NewDatabaseFactory(ctx, cfg)
 	require.NoError(t, err)
+	t.Cleanup(factory.Cleanup)
 
-	tests := []struct {
-		name    string
-		setup   func(*testing.T) *DatabaseFactory
-		wantErr bool
-	}{
-		{
-			name: "successfully creates registry service",
-			setup: func(t *testing.T) *DatabaseFactory {
-				t.Helper()
-				cfg := &config.Config{
-					Database: &config.DatabaseConfig{
-						Host:     db.Config().Host,
-						Port:     int(db.Config().Port),
-						User:     db.Config().User,
-						Database: db.Config().Database,
-						SSLMode:  "disable",
-					},
-				}
-				factory, err := NewDatabaseFactory(ctx, cfg)
-				require.NoError(t, err)
-				t.Cleanup(factory.Cleanup)
-				return factory
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			factory := tt.setup(t)
-			registryService, err := factory.CreateRegistryService(ctx)
-
-			if tt.wantErr {
-				require.Error(t, err)
-				assert.Nil(t, registryService)
-				return
-			}
-
-			require.NoError(t, err)
-			require.NotNil(t, registryService)
-		})
-	}
+	_, err = factory.CreateCatalog(ctx, nil)
+	require.Error(t, err)
 }
 
 func TestDatabaseFactory_Cleanup(t *testing.T) {

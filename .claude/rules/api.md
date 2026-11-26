@@ -16,11 +16,14 @@ is our admin surface and evolves independently. Extensions to the consumer surfa
 `/x/{vendor}/...`.
 
 **What must hold:**
-- Consumer endpoints under `internal/api/registry/v01/` must match upstream request params,
+- Consumer endpoints are served by the library's router (`pkg/registry/httpapi`), mounted
+  at `/registry` in `internal/api/server.go`, and must match upstream request params,
   response shapes, pagination cursor, and error codes. Types come from
-  `github.com/modelcontextprotocol/registry/pkg/api/v0`.
+  `github.com/modelcontextprotocol/registry/pkg/api/v0`. `internal/api/consumer_compat.go`
+  keeps the server's established response shapes on top of the library's payloads, and
+  `internal/api/openapi_consumer.go` documents these routes for the OpenAPI spec.
 - Admin endpoints under `internal/api/v1/` have no upstream parity requirement.
-- Extensions live under `/x/dev.toolhive/...` (currently `internal/api/x/skills/`). The
+- Extensions live under `/x/dev.toolhive/...` (currently skills and plugins). The
   `/x/` prefix signals "non-spec."
 - The `{registryName}` path segment is required even if only one registry exists. The
   `/registry/` prefix avoids path collisions (e.g., a registry literally named "v1").
@@ -74,15 +77,19 @@ type, and URL-param name are declared at route registration.
 wrapper; a handler that rolls its own audit logging instead of using the middleware; an
 event type renamed without checking downstream log consumers.
 
-**Instead**: pick the right wrapper (`Audited`, `AuditedUpsert`, `AuditedEntry`,
-`AuditedServer`) and declare it at the route. Audit event names
+**Instead**: pick the right wrapper (`Audited`, `AuditedUpsert`, `AuditedEntry`) and declare
+it at the route. Consumer reads are audited too: `auditConsumerRoute` in
+`internal/api/server.go` wraps each library route with `AuditedServer`/`AuditedSkill`/
+`AuditedPlugin`, using the event name on the library's route descriptor. Audit event names
 (`source.create`, `entry.publish`, etc.) are stable — renaming them is a breaking change.
 
 ## 5. Dedup at `(type, name)` Level With Source Priority
 
-When multiple sources in a registry provide the same `(type, name)`, the highest-priority
-source wins entirely. Mixed version histories across sources are not allowed in consumer
-views.
+When multiple sources in a registry provide the same `(type, name)` — for skills and
+plugins, the same `(type, namespace, name)` — the highest-priority source wins entirely,
+for lists, latest and exact-version reads alike. Mixed version histories across sources
+are not allowed in consumer views, and an exact version only the losing source has is not
+found.
 
 **What must hold:**
 - Dedup happens at the name level, not the version level. All versions of a name come from

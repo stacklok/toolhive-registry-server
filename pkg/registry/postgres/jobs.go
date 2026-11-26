@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
-	"github.com/stacklok/toolhive-registry-server/internal/sync/writer"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/model"
 	"github.com/stacklok/toolhive-registry-server/pkg/registry/persistence"
 )
@@ -20,17 +19,22 @@ import (
 type Jobs struct {
 	pool        *pgxpool.Pool
 	maxMetaSize int
+	options     options
 }
 
 var _ persistence.Jobs = (*Jobs)(nil)
 
 // NewJobs does not run the global latest-pointer repair: construct NewEntries
 // once after offline migration and before serving reads, not on every job poll.
-func NewJobs(pool *pgxpool.Pool, maxMetaSize int) (*Jobs, error) {
+func NewJobs(pool *pgxpool.Pool, maxMetaSize int, opts ...Option) (*Jobs, error) {
 	if pool == nil || maxMetaSize <= 0 {
 		return nil, persistence.ErrInvalid
 	}
-	return &Jobs{pool: pool, maxMetaSize: maxMetaSize}, nil
+	o, err := applyOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	return &Jobs{pool: pool, maxMetaSize: maxMetaSize, options: o}, nil
 }
 
 // ClaimNext atomically acquires one due, unlocked polling source. No job means
@@ -195,8 +199,8 @@ func (d *Jobs) CommitSnapshot(
 		if row.Name != job.Source.Name || row.SourceType != kind {
 			return persistence.ErrStale
 		}
-		if e = writer.StoreSourceTx(ctx, tx, id, &snapshot, d.maxMetaSize); e != nil {
-			return classifySnapshotWrite(e)
+		if e = storeSnapshotTx(ctx, tx, d.options, id, row.Name, &snapshot, d.maxMetaSize); e != nil {
+			return e
 		}
 		n, e := q.JobFinish(ctx, sqlc.JobFinishParams{Column1: id, Column2: lease, Column3: job.Generation,
 			LastSyncHash: &result.Hash, LastAppliedFilterHash: &result.FilterHash,
