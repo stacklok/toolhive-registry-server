@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 )
 
 const testSkillVersion = "1.0.0"
@@ -255,7 +255,7 @@ func TestInsertSkillVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -355,7 +355,7 @@ func TestInsertSkillVersionForSync(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -488,7 +488,7 @@ func TestUpsertSkillVersionForSync(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -769,7 +769,7 @@ func TestGetSkillVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1161,7 +1161,7 @@ func TestListSkills(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1318,7 +1318,7 @@ func TestUpsertLatestSkillVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1439,7 +1439,7 @@ func TestDeleteOrphanedSkills(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1529,7 +1529,7 @@ func TestInsertSkillGitPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1618,7 +1618,7 @@ func TestInsertSkillOciPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1745,7 +1745,7 @@ func TestListSkillGitPackages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)
@@ -1869,7 +1869,7 @@ func TestListSkillOciPackages(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			db, cleanupFunc := database.SetupTestDB(t)
+			db, cleanupFunc := dbtest.SetupTestDB(t)
 			t.Cleanup(cleanupFunc)
 
 			queries := New(db)

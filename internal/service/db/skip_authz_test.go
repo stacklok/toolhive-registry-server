@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 	"github.com/stacklok/toolhive-registry-server/internal/db/sqlc"
 	"github.com/stacklok/toolhive-registry-server/internal/service"
@@ -20,7 +20,7 @@ func setupTestServiceWithSkipAuthz(t *testing.T) (*dbService, func()) {
 	t.Helper()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDB(t)
+	db, cleanupFunc := dbtest.SetupTestDB(t)
 	t.Cleanup(cleanupFunc)
 
 	connStr := db.Config().ConnString()

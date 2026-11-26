@@ -43,6 +43,10 @@ func NewDefaultClient(timeout time.Duration) Client {
 	return &defaultClient{
 		client: &http.Client{
 			Timeout: timeout,
+			// A dedicated transport: the shared http.DefaultTransport can have
+			// its connections closed by unrelated code (httptest.Server.Close
+			// closes its idle connections), breaking in-flight requests.
+			Transport: http.DefaultTransport.(*http.Transport).Clone(),
 		},
 		timeout: timeout,
 	}
@@ -95,7 +99,6 @@ func (c *defaultClient) Get(ctx context.Context, url string) ([]byte, error) {
 	}
 
 	slog.DebugContext(ctx, "HTTP client request completed",
-		"url", url,
 		"status", resp.StatusCode,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"response_bytes", len(body),

@@ -172,15 +172,17 @@ RETURNING version_id;
 -- name: UpsertLatestPluginVersion :one
 INSERT INTO latest_entry_version (
     source_id,
+    entry_type,
     name,
     version,
     latest_version_id
 ) VALUES (
     sqlc.arg(source_id),
+    'PLUGIN',
     sqlc.arg(name),
     sqlc.arg(version),
     sqlc.arg(version_id)
-) ON CONFLICT (source_id, name)
+) ON CONFLICT (source_id, entry_type, name)
   DO UPDATE SET
     version = sqlc.arg(version),
     latest_version_id = sqlc.arg(version_id)
@@ -269,7 +271,8 @@ INSERT INTO plugin (
 )
 ON CONFLICT (version_id)
 DO UPDATE SET
-    status = COALESCE(sqlc.narg(status)::plugin_status, plugin.status),
+    namespace = EXCLUDED.namespace,
+    status = EXCLUDED.status,
     license = sqlc.narg(license),
     repository = sqlc.narg(repository),
     icons = sqlc.narg(icons),

@@ -65,3 +65,11 @@ CREATE TABLE temp_mcp_server_icon (
     mime_type TEXT NOT NULL,
     theme TEXT NOT NULL
 );
+
+CREATE TABLE temp_latest_repair (
+    source_id UUID NOT NULL,
+    entry_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    version_id UUID NOT NULL
+);

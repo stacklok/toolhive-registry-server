@@ -34,6 +34,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/term v0.48.0
+	k8s.io/api v0.37.2
+	k8s.io/apiextensions-apiserver v0.37.2
 	k8s.io/apimachinery v0.37.3
 	sigs.k8s.io/controller-runtime v0.25.3
 )
@@ -256,8 +258,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.37.2 // indirect
-	k8s.io/apiextensions-apiserver v0.37.2 // indirect
 	k8s.io/client-go v0.37.2 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect

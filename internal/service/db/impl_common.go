@@ -73,13 +73,15 @@ func rePointLatestVersionIfNeeded(
 	ctx context.Context,
 	querier *sqlc.Queries,
 	sourceID uuid.UUID,
+	entryType sqlc.EntryType,
 	name string,
 	entryID uuid.UUID,
 	upsertLatest upsertLatestFunc,
 ) error {
 	_, err := querier.GetLatestEntryVersion(ctx, sqlc.GetLatestEntryVersionParams{
-		Name:     name,
-		SourceID: sourceID,
+		Name:      name,
+		EntryType: entryType,
+		SourceID:  sourceID,
 	})
 	if err == nil {
 		// Pointer still exists — deleted version was not the latest, nothing to do.

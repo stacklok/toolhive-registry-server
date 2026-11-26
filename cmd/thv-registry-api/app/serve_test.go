@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/stacklok/toolhive-registry-server/database"
+	"github.com/stacklok/toolhive-registry-server/database/dbtest"
 	"github.com/stacklok/toolhive-registry-server/internal/config"
 )
 
@@ -31,7 +32,7 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 	t.Helper()
 
 	ctx := context.Background()
-	db, cleanupFunc := database.SetupTestDBContainer(t, ctx)
+	db, cleanupFunc := dbtest.SetupTestDBContainer(t, ctx)
 
 	// Get connection details from the database connection
 	connStr := db.Config().ConnString()
@@ -68,7 +69,7 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 			EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %%I', migrator_user);
 		END
 		$$;
-	`, migratorUser, migratorPassword, database.DBName)
+	`, migratorUser, migratorPassword, dbtest.DBName)
 
 	_, err = tx.Conn().Exec(ctx, migratorSQL)
 	require.NoError(t, err)
@@ -91,15 +92,15 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 			EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %%I TO %%I', db_name, app_user);
 		END
 		$$;
-	`, appUser, appPassword, database.DBName)
+	`, appUser, appPassword, dbtest.DBName)
 
 	_, err = tx.Conn().Exec(ctx, appSQL)
 	require.NoError(t, err)
 
 	// Create a temporary pgpass file for tests
 	pgpassContent := fmt.Sprintf("%s:%d:%s:%s:%s\n%s:%d:%s:%s:%s\n",
-		host, port, database.DBName, appUser, appPassword,
-		host, port, database.DBName, migratorUser, migratorPassword,
+		host, port, dbtest.DBName, appUser, appPassword,
+		host, port, dbtest.DBName, migratorUser, migratorPassword,
 	)
 	pgpassFile, err := os.CreateTemp("", "pgpass-test-*")
 	require.NoError(t, err)
@@ -129,7 +130,7 @@ func setupBenchmarkDB(t *testing.T) (*config.Config, string, func()) {
 			Port:          port,
 			User:          appUser,
 			MigrationUser: migratorUser,
-			Database:      database.DBName,
+			Database:      dbtest.DBName,
 			SSLMode:       "disable",
 		},
 		Sources: []config.SourceConfig{
